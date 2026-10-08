@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 280" width="100%" height="100%">
+  <!-- White Background matching logo bima.jpg -->
+  <rect width="640" height="280" fill="#ffffff" />
+
+  <g transform="translate(45, 55)">
+    <!-- PELINDO EMBLEM (Official Wave Monogram) -->
+    <g transform="translate(10, 15)">
+      <!-- Top-Left Cyan Ribbon -->
+      <path
+        d="M 16 68 C 16 38, 38 16, 70 16 C 82 16, 92 20, 100 28 L 100 52 C 92 44, 82 40, 70 40 C 52 40, 38 54, 38 70 C 38 78, 41 85, 46 91 L 32 105 C 22 95, 16 82, 16 68 Z"
+        fill="#00a2e8"
+      />
+
+      <!-- Top-Right and Bottom Marine Blue Ribbon Loop -->
+      <path
+        d="M 70 16 C 104 16, 126 38, 126 70 C 126 102, 102 124, 70 124 L 42 124 L 42 100 L 70 100 C 90 100, 102 88, 102 70 C 102 54, 90 40, 70 40 L 70 16 Z"
+        fill="#00609c"
+      />
+
+      <!-- Bottom-Left Squares / Pixel Nodes -->
+      <rect x="8" y="92" width="24" height="24" rx="2" fill="#00a2e8" />
+      <rect x="32" y="68" width="24" height="24" rx="2" fill="#00609c" />
+      <rect x="8" y="68" width="24" height="24" rx="2" fill="#00a2e8" fill-opacity="0.35" />
+    </g>
+
+    <!-- WORDMARK: PELINDO -->
+    <g transform="translate(160, 68)">
+      <!-- P -->
+      <path
+        d="M 0 10 L 0 -48 L 22 -48 C 36 -48, 46 -38, 46 -24 C 46 -10, 36 0, 22 0 L 12 0 L 12 10 Z M 12 -12 L 21 -12 C 28 -12, 33 -17, 33 -24 C 33 -31, 28 -36, 21 -36 L 12 -36 Z"
+        fill="#00609c"
+      />
+      <!-- E -->
+      <path
+        d="M 58 10 L 58 -48 L 98 -48 L 98 -36 L 70 -36 L 70 -24 L 95 -24 L 95 -13 L 70 -13 L 70 -1 L 99 -1 L 99 10 Z"
+        fill="#00609c"
+      />
+      <!-- L -->
+      <path
+        d="M 112 10 L 112 -48 L 124 -48 L 124 -2 L 152 -2 L 152 10 Z"
+        fill="#00609c"
+      />
+      <!-- I -->
+      <path
+        d="M 166 10 L 166 -48 L 178 -48 L 178 10 Z"
+        fill="#00609c"
+      />
+      <!-- N -->
+      <path
+        d="M 194 10 L 194 -48 L 207 -48 L 232 -13 L 232 -48 L 244 -48 L 244 10 L 231 10 L 206 -25 L 206 10 Z"
+        fill="#00609c"
+      />
+      <!-- D -->
+      <path
+        d="M 260 10 L 260 -48 L 284 -48 C 302 -48, 316 -35, 316 -19 C 316 -3, 302 10, 284 10 Z M 272 -2 L 283 -2 C 295 -2, 303 -9, 303 -19 C 303 -29, 295 -36, 283 -36 L 272 -36 Z"
+        fill="#00609c"
+      />
+      <!-- O -->
+      <path
+        d="M 358 -48 C 378 -48, 394 -32, 394 -19 C 394 -6, 378 10, 358 10 C 338 10, 322 -6, 322 -19 C 322 -32, 338 -48, 358 -48 Z M 358 -36 C 345 -36, 335 -28, 335 -19 C 335 -10, 345 -2, 358 -2 C 371 -2, 381 -10, 381 -19 C 381 -28, 371 -36, 358 -36 Z"
+        fill="#00609c"
+      />
+    </g>
+
+    <!-- SUBTITLE: JASA MARITIM -->
+    <text
+      x="272"
+      y="118"
+      fill="#009e86"
+      font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Plus Jakarta Sans', sans-serif"
+      font-size="28"
+      font-weight="700"
+      letter-spacing="2.2"
+    >
+      JASA MARITIM
+    </text>
+
+    <!-- SUBSIDIARY: BIMA -->
+    <text
+      x="430"
+      y="156"
+      fill="#e04838"
+      font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Plus Jakarta Sans', sans-serif"
+      font-size="28"
+      font-weight="800"
+      letter-spacing="1.5"
+    >
+      BIMA
+    </text>
+  </g>
+</svg>
