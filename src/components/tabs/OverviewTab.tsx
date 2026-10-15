@@ -160,7 +160,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           title="Realisasi Kumulatif Agu 2026"
           sourceId="S2"
           value={`${currentReal.toFixed(1)}%`}
-          subtitle={`▼ ${Math.abs(currentDev).toFixed(1)} pp vs rencana ${currentPlan.toFixed(1)}%`}
+          subtitle={`▼ ${Math.abs(currentDev).toFixed(1)}% vs rencana ${currentPlan.toFixed(1)}%`}
           isNegative={currentDev < 0}
           isPositive={currentDev >= 0}
           icon={<TrendingDown className="w-4 h-4" />}
@@ -207,7 +207,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 {hoveredMonth != null ? (
                   <div className="text-[11px] font-mono px-2 py-0.5 bg-blue-50 dark:bg-blue-950/60 rounded border border-blue-200 dark:border-blue-800 text-blue-900 dark:text-blue-200">
                     <span className="font-semibold">{MONTH_NAMES[hoveredMonth % 12]} 20{24 + Math.floor(hoveredMonth / 12)}</span>:{' '}
-                    Plan {aggregate.P[hoveredMonth]?.toFixed(1)}% | Real {aggregate.R[hoveredMonth]?.toFixed(1)}% ({aggregate.D[hoveredMonth] > 0 ? '+' : ''}{aggregate.D[hoveredMonth]?.toFixed(1)} pp)
+                    Plan {aggregate.P[hoveredMonth]?.toFixed(1)}% | Real {aggregate.R[hoveredMonth]?.toFixed(1)}% ({aggregate.D[hoveredMonth] > 0 ? '+' : ''}{aggregate.D[hoveredMonth]?.toFixed(1)}%)
                   </div>
                 ) : (
                   <span className="text-[10.5px] text-slate-400">Arahkan kursor ke grafik untuk detail bulan</span>
@@ -527,7 +527,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                             rx="1"
                             className="hover:opacity-80 transition-opacity"
                           >
-                            <title>{`${MONTH_NAMES[i % 12]} 20${24 + Math.floor(i / 12)}: ${val > 0 ? '+' : ''}${val.toFixed(1)} pp`}</title>
+                            <title>{`${MONTH_NAMES[i % 12]} 20${24 + Math.floor(i / 12)}: ${val > 0 ? '+' : ''}${val.toFixed(1)}%`}</title>
                           </rect>
                         </g>
                       );

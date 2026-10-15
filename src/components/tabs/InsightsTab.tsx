@@ -11,22 +11,22 @@ export const InsightsTab: React.FC<InsightsTabProps> = ({ onNavigateToProjects }
     {
       id: 1,
       title: 'Realisasi agregat tertinggal, celah menyempit',
-      subtitle: 'Agu 2026: 93,7% vs rencana 99,5% (−5,8 pp)',
+      subtitle: 'Agu 2026: 93,7% vs rencana 99,5% (−5,8%)',
       icon: <TrendingDown className="w-5 h-5 text-amber-500" />,
       color: 'border-l-amber-500',
       description:
-        'Proyek agregat sempat unggul hingga Januari 2025 (puncak surplus +10,6 pp pada Mei 2024), menyilang negatif di Februari 2025, dan mencapai deviasi negatif terdalam −10,4 pp di Januari 2026 sebelum berangsur menyempit ke −5,8 pp.',
+        'Proyek agregat sempat unggul hingga Januari 2025 (puncak surplus +10,6% pada Mei 2024), menyilang negatif di Februari 2025, dan mencapai deviasi negatif terdalam −10,4% di Januari 2026 sebelum berangsur menyempit ke −5,8%.',
       sources: 'S2, S4, S5',
       action: 'Perlu akselerasi sisa pekerjaan mekanikal & comtest pada 2 bulan mendatang.'
     },
     {
       id: 2,
       title: 'Target 100% pada September 2026 sulit tercapai tanpa percepatan',
-      subtitle: 'Kekurangan ±6,3 pp dalam kurun waktu singkat',
+      subtitle: 'Kekurangan ±6,3% dalam kurun waktu singkat',
       icon: <Clock className="w-5 h-5 text-rose-500" />,
       color: 'border-l-rose-500',
       description:
-        'Dengan rerata realisasi bulanan di tahun 2026 hanya berkisar ±2,2 pp per bulan, pemenuhan sisa 6,3 pp memerlukan percepatan terfokus pada proyek-proyek berbobot tinggi atau rebaseline jadwal penyelesaian.',
+        'Dengan rerata realisasi bulanan di tahun 2026 hanya berkisar ±2,2% per bulan, pemenuhan sisa 6,3% memerlukan percepatan terfokus pada proyek-proyek berbobot tinggi atau rebaseline jadwal penyelesaian.',
       sources: 'S4',
       action: 'Fokuskan sumber daya pada commissioning test dan penutupan punchlist.'
     },

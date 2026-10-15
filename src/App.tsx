@@ -11,7 +11,9 @@ import {
   BK,
   CL,
   MasterProject,
-  ContractItem
+  ContractItem,
+  PROJECT_PIC_MAP,
+  getProjectPic
 } from './data/bimaData';
 import {
   LayoutDashboard,
@@ -27,7 +29,6 @@ import {
   Info,
   Sun,
   Moon,
-  PanelLeft,
   RotateCcw,
   ChevronLeft,
   ChevronRight,
@@ -35,7 +36,13 @@ import {
   Plus,
   Trash2,
   Check,
-  Edit3
+  User,
+  PanelLeft,
+  Pin,
+  PinOff,
+  Calendar,
+  CheckCircle2,
+  Activity
 } from 'lucide-react';
 
 // Status Update Record and History Types
@@ -45,6 +52,7 @@ export interface ProjectStatusUpdate {
   mit: string;
   ls: string;
   lastUpdated: string;
+  author?: string;
 }
 
 export interface StatusHistoryEntry {
@@ -55,11 +63,38 @@ export interface StatusHistoryEntry {
   mit: string;
   ls: string;
   note?: string;
-  author?: string;
+  author: string;
 }
 
+export const PIC_UPDATE_OPTIONS = [
+  'Muhaimin',
+  'Tommy',
+  'Sindy',
+  'Faruq',
+  'Sarah',
+  'Ardi',
+  'Aziz',
+  'Dita',
+  'Eltria',
+  'Kiki Dea',
+  'Saiful',
+  'Wahyu',
+  'Widya',
+  'Yustaim'
+];
+
 // Interactive Kurva S Line Chart with Hover Crosshair and Month Tooltip
-function InteractiveKurvaChart({ d }: { d: { p: (number | null)[]; r: (number | null)[] } }) {
+function InteractiveKurvaChart({
+  d,
+  cutoffIdx = 31,
+  startMonthIdx = 0,
+  cutoffLabel = 'Agustus 2026'
+}: {
+  d: { p: (number | null)[]; r: (number | null)[] };
+  cutoffIdx?: number;
+  startMonthIdx?: number;
+  cutoffLabel?: string;
+}) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const n = K.m;
   const W = 640;
@@ -151,19 +186,34 @@ function InteractiveKurvaChart({ d }: { d: { p: (number | null)[]; r: (number | 
           );
         })}
 
-        {/* Current cutoff marker (Agu 2026) */}
+        {/* Active range highlight band if date filter is active */}
+        {(startMonthIdx > 0 || cutoffIdx < 31) && (
+          <rect
+            x={X(startMonthIdx)}
+            y={T}
+            width={Math.max(2, X(cutoffIdx) - X(startMonthIdx))}
+            height={H - T - B}
+            fill="#2563eb"
+            fillOpacity="0.08"
+            stroke="#2563eb"
+            strokeOpacity="0.25"
+            strokeDasharray="3 3"
+          />
+        )}
+
+        {/* Dynamic cutoff marker based on date filter */}
         <line
-          x1={X(31)}
-          x2={X(31)}
+          x1={X(cutoffIdx)}
+          x2={X(cutoffIdx)}
           y1={T}
           y2={H - B}
           stroke="#2563eb"
-          strokeWidth="1.5"
+          strokeWidth="1.8"
           strokeDasharray="4 3"
-          opacity="0.8"
+          opacity="0.9"
         />
-        <text x={X(31) - 4} y={T + 10} textAnchor="end" fontSize="10" fill="#2563eb" fontWeight="700">
-          Agu 2026
+        <text x={X(cutoffIdx) - 4} y={T + 10} textAnchor="end" fontSize="10" fill="#2563eb" fontWeight="700">
+          {cutoffLabel}
         </text>
 
         {/* Gradient area under Realisasi */}
@@ -226,11 +276,11 @@ function InteractiveKurvaChart({ d }: { d: { p: (number | null)[]; r: (number | 
         <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
           <span>
             <i className="dot" style={{ background: '#94a3b8' }} />
-            Rencana (kumulatif)
+            Rencana (Kumulatif)
           </span>
           <span>
             <i className="dot" style={{ background: '#2563eb' }} />
-            Realisasi (kumulatif)
+            Realisasi (Kumulatif)
           </span>
         </div>
 
@@ -466,8 +516,193 @@ function ProjectStagePieChart({ data }: { data: PieSliceData[] }) {
   );
 }
 
-// Modern Interactive Horizontal Bar Chart for PIC Workload (Bar ke bawah)
-function PicHorizontalBarChart({ data }: { data: [string, number][] }) {
+// Modern Interactive Bubble Chart for Risk Map (Peta Risiko)
+function RiskBubbleChart({
+  projects,
+  onSelectProject,
+  stc,
+  stText,
+  f1
+}: {
+  projects: MasterProject[];
+  onSelectProject: (idx: number) => void;
+  stc: (s: string) => string;
+  stText: (s: string) => string;
+  f1: (n: number) => string;
+}) {
+  const [hoveredProj, setHoveredProj] = useState<MasterProject | null>(null);
+
+  const activeProjects = useMemo(() => {
+    return projects.filter(m => m.g === 'ON GOING');
+  }, [projects]);
+
+  if (activeProjects.length === 0) {
+    return <p className="src">Tidak ada data project berjalan.</p>;
+  }
+
+  const W = 520;
+  const H = 230;
+  const L = 55;
+  const R = 20;
+  const T = 24;
+  const B = 40;
+
+  const xVals = activeProjects.map(m => m.nv);
+  const minX = 0;
+  const maxX = Math.max(...xVals, 50) * 1.1;
+
+  const yVals = activeProjects.map(m => m.dv ?? ((m.rl ?? 0) - (m.pl ?? 0)));
+  const minY = Math.min(...yVals, -10) * 1.1;
+  const maxY = Math.max(...yVals, 10) * 1.1;
+
+  const toX = (val: number) => L + ((val - minX) / (maxX - minX || 1)) * (W - L - R);
+  const toY = (val: number) => H - B - ((val - minY) / (maxY - minY || 1)) * (H - T - B);
+
+  const sizeVals = activeProjects.map(m => m.nv);
+  const minSz = Math.min(...sizeVals);
+  const maxSz = Math.max(...sizeVals);
+  const toRadius = (val: number) => {
+    if (maxSz === minSz) return 8;
+    const ratio = (val - minSz) / (maxSz - minSz);
+    return 5 + ratio * 12;
+  };
+
+  return (
+    <div style={{ position: 'relative', width: '100%' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ overflow: 'visible' }}>
+        {/* Y grid lines */}
+        {[minY, 0, maxY].map((val, idx) => {
+          const yPos = toY(val);
+          if (yPos < T || yPos > H - B) return null;
+          return (
+            <React.Fragment key={idx}>
+              <line x1={L} x2={W - R} y1={yPos} y2={yPos} stroke="var(--line)" strokeDasharray="3 3" />
+              <text x={L - 6} y={yPos + 3.5} textAnchor="end" fontSize="11" fill="var(--mute)" fontWeight="600">
+                {val > 0 ? `+${val.toFixed(0)}%` : `${val.toFixed(0)}%`}
+              </text>
+            </React.Fragment>
+          );
+        })}
+
+        {/* Axis title Y */}
+        <text x={15} y={(T + H - B) / 2} transform={`rotate(-90, 15, ${(T + H - B) / 2})`} textAnchor="middle" fontSize="11.5" fill="var(--ink)" fontWeight="700">
+          Deviasi (%)
+        </text>
+
+        {/* X axis zero line */}
+        <line x1={L} x2={W - R} y1={toY(0)} y2={toY(0)} stroke="var(--ink)" strokeWidth="1" opacity="0.3" />
+
+        {/* X grid labels */}
+        {[minX, (minX + maxX) / 2, maxX].map((val, idx) => {
+          const xPos = toX(val);
+          return (
+            <text key={idx} x={xPos} y={H - B + 14} textAnchor="middle" fontSize="11" fill="var(--mute)" fontWeight="600">
+              {val.toFixed(0)}M
+            </text>
+          );
+        })}
+
+        {/* Axis title X */}
+        <text x={W / 2} y={H - 4} textAnchor="middle" fontSize="11.5" fill="var(--ink)" fontWeight="700">
+          Nilai Pekerjaan (Rp M) →
+        </text>
+
+        {/* Bubbles */}
+        {activeProjects.map(m => {
+          const valX = m.nv;
+          const valY = m.dv ?? ((m.rl ?? 0) - (m.pl ?? 0));
+          const cx = toX(valX);
+          const cy = toY(valY);
+          const r = toRadius(m.nv);
+          const color = stc(m.st);
+          const isHovered = hoveredProj?.no === m.no;
+
+          return (
+            <g
+              key={m.no}
+              onMouseEnter={() => setHoveredProj(m)}
+              onMouseLeave={() => setHoveredProj(null)}
+            >
+              <circle
+                cx={cx}
+                cy={cy}
+                r={isHovered ? r + 3 : r}
+                fill={color}
+                fillOpacity={0.8}
+                stroke="#ffffff"
+                strokeWidth={isHovered ? 2.2 : 1.2}
+                style={{
+                  transition: 'all 0.2s ease',
+                  filter: isHovered ? 'drop-shadow(0 3px 6px rgba(0,0,0,0.25))' : 'none'
+                }}
+              />
+              <text
+                x={cx}
+                y={cy + 3.5}
+                textAnchor="middle"
+                fontSize="9.5"
+                fill="#ffffff"
+                fontWeight="700"
+                pointerEvents="none"
+              >
+                {m.no}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+
+      {hoveredProj ? (
+        <div
+          style={{
+            marginTop: '6px',
+            padding: '6px 10px',
+            background: 'var(--card)',
+            border: '1px solid var(--line)',
+            borderRadius: '6px',
+            fontSize: '11px',
+            boxShadow: '0 4px 10px rgba(0,0,0,0.08)'
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+            <b style={{ color: 'var(--ink)' }}>#{hoveredProj.no}. {hoveredProj.n}</b>
+            <span
+              className="tag"
+              style={{
+                background: stc(hoveredProj.st),
+                color: stText(hoveredProj.st),
+                fontSize: '9.5px',
+                padding: '1px 5px'
+              }}
+            >
+              {hoveredProj.st}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: '12px', color: 'var(--mute)' }}>
+            <span>Pemilik: <b style={{ color: 'var(--ink)' }}>{hoveredProj.pem}</b></span>
+            <span>Nilai: <b style={{ color: 'var(--ink)' }}>Rp{f1(hoveredProj.nv)}M</b></span>
+            <span>Deviasi: <b style={{ color: 'var(--ink)' }}>{f1(hoveredProj.dv ?? 0)}%</b></span>
+          </div>
+        </div>
+      ) : (
+        <div style={{ marginTop: '4px', fontSize: '10.5px', color: 'var(--mute)', textAlign: 'center' }}>
+          Arahkan kursor ke titik bubble untuk detail project, klik untuk membuka.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Modern Vertical Column Bar Chart for PIC Workload
+function PicBarChart({
+  data,
+  onSelectPic,
+  selectedPic
+}: {
+  data: [string, number][];
+  onSelectPic?: (pic: string) => void;
+  selectedPic?: string;
+}) {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
   if (data.length === 0) {
@@ -477,50 +712,215 @@ function PicHorizontalBarChart({ data }: { data: [string, number][] }) {
   const maxVal = Math.max(...data.map(d => d[1]), 1);
   const total = data.reduce((a, b) => a + b[1], 0);
 
+  // SVG dimensions
+  const barCount = data.length;
+  const W = Math.max(650, barCount * 50);
+  const H = 340;
+  const padL = 42;
+  const padR = 24;
+  const padT = 38;
+  const padB = 62;
+  const chartW = W - padL - padR;
+  const chartH = H - padT - padB;
+
+  const barSlotW = chartW / barCount;
+  const barW = Math.min(36, Math.max(18, barSlotW * 0.62));
+
+  // Y-axis grid ticks
+  const yTicks = [0, Math.ceil(maxVal / 2), maxVal];
+  const uniqueYTicks = Array.from(new Set(yTicks));
+
+  // Garis rata-rata beban per PIC (contoh: 78 kontrak / 13 PIC = 6)
+  const avg = total / data.length;
+  const avgY = padT + chartH - (avg / maxVal) * chartH;
+
   return (
-    <div className="pic-hbar-chart-wrapper">
-      <div className="pic-hbar-list">
-        {data.map(([pic, val], i) => {
-          const pctOfMax = Math.max(Math.round((val / maxVal) * 100), 4);
-          const sharePct = total > 0 ? ((val / total) * 100).toFixed(1) : '0';
-          const isHovered = hoveredIdx === i;
+    <div className="pic-column-chart-container">
+      <div className="pic-vbar-chart-card">
+        <svg viewBox={`0 0 ${W} ${H}`} className="pic-vbar-chart-svg">
+          <defs>
+            <linearGradient id="picBarGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#3b82f6" />
+              <stop offset="100%" stopColor="#1d4ed8" />
+            </linearGradient>
+            <linearGradient id="picBarGradHover" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#38bdf8" />
+              <stop offset="100%" stopColor="#2563eb" />
+            </linearGradient>
+            <linearGradient id="picBarGradActive" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#f59e0b" />
+              <stop offset="100%" stopColor="#d97706" />
+            </linearGradient>
+          </defs>
 
-          return (
-            <div
-              key={pic}
-              className={`pic-hbar-row ${isHovered ? 'hovered' : ''}`}
-              onMouseEnter={() => setHoveredIdx(i)}
-              onMouseLeave={() => setHoveredIdx(null)}
-            >
-              <div className="pic-hbar-header">
-                <div className="pic-hbar-title">
-                  <span className="pic-avatar-badge">{pic.charAt(0).toUpperCase()}</span>
-                  <span className="pic-hbar-name" title={pic}>
-                    {pic}
-                  </span>
-                </div>
-                <div className="pic-hbar-stats">
-                  <b>{val}</b> <small>kontrak ({sharePct}%)</small>
-                </div>
-              </div>
+          {/* Sumbu Y Title */}
+          <text
+            transform={`translate(${padL - 28}, ${padT + chartH / 2}) rotate(-90)`}
+            textAnchor="middle"
+            fontSize="10"
+            fill="var(--mute)"
+            fontWeight="700"
+          >
+            Jumlah Kontrak
+          </text>
 
-              <div className="pic-hbar-track">
-                <div
-                  className="pic-hbar-fill"
-                  style={{
-                    width: `${pctOfMax}%`,
-                    background: isHovered
-                      ? 'linear-gradient(90deg, #38bdf8, #2563eb)'
-                      : 'linear-gradient(90deg, #60a5fa, #2563eb)'
-                  }}
+          {/* Grid lines and Y labels */}
+          {uniqueYTicks.map(val => {
+            const yPos = padT + chartH - (val / maxVal) * chartH;
+            return (
+              <g key={val}>
+                <line
+                  x1={padL}
+                  x2={W - padR}
+                  y1={yPos}
+                  y2={yPos}
+                  stroke="var(--line)"
+                  strokeDasharray={val === 0 ? 'none' : '3 3'}
+                  strokeWidth={val === 0 ? 1.2 : 0.8}
                 />
-              </div>
-            </div>
-          );
-        })}
+                <text
+                  x={padL - 6}
+                  y={yPos + 4}
+                  textAnchor="end"
+                  fontSize="11"
+                  fill="var(--mute)"
+                  fontWeight="600"
+                >
+                  {val}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Garis rata-rata */}
+          <line
+            x1={padL}
+            x2={W - padR}
+            y1={avgY}
+            y2={avgY}
+            stroke="var(--mute)"
+            strokeDasharray="5 4"
+            strokeWidth={1.2}
+            opacity={0.6}
+          />
+          <text
+            x={W - padR}
+            y={avgY - 6}
+            textAnchor="end"
+            fontSize="11"
+            fill="var(--mute)"
+            fontWeight="700"
+          >
+            Rata-rata {Math.round(avg)}
+          </text>
+
+          {/* Bars */}
+          {data.map(([pic, val], i) => {
+            const barH = Math.max(4, (val / maxVal) * chartH);
+            const x = padL + i * barSlotW + (barSlotW - barW) / 2;
+            const y = padT + chartH - barH;
+            const isHovered = hoveredIdx === i;
+            const isSelected = selectedPic === pic;
+
+            let fillGrad = 'url(#picBarGrad)';
+            if (isSelected) fillGrad = 'url(#picBarGradActive)';
+            else if (isHovered) fillGrad = 'url(#picBarGradHover)';
+
+            return (
+              <g
+                key={pic}
+                onMouseEnter={() => setHoveredIdx(i)}
+                onMouseLeave={() => setHoveredIdx(null)}
+                onClick={() => onSelectPic && onSelectPic(isSelected ? '' : pic)}
+                style={{ cursor: onSelectPic ? 'pointer' : 'default' }}
+              >
+                {/* Background hover column hit area */}
+                <rect
+                  x={padL + i * barSlotW + 2}
+                  y={padT}
+                  width={barSlotW - 4}
+                  height={chartH}
+                  fill={isHovered ? 'rgba(37, 99, 235, 0.05)' : 'transparent'}
+                  rx={6}
+                />
+
+                {/* Actual Bar */}
+                <rect
+                  className="pic-vbar-bar-rect"
+                  x={x}
+                  y={y}
+                  width={barW}
+                  height={barH}
+                  rx={5}
+                  fill={fillGrad}
+                />
+
+                {/* Bar Value on Top */}
+                <text
+                  x={x + barW / 2}
+                  y={y - 6}
+                  textAnchor="middle"
+                  fontSize="11"
+                  fill={isSelected ? '#d97706' : isHovered ? '#2563eb' : 'var(--ink)'}
+                  fontWeight="800"
+                >
+                  {val}
+                </text>
+
+                {/* PIC Name on X Axis */}
+                <text
+                  x={x + barW / 2}
+                  y={H - padB + 16}
+                  textAnchor="middle"
+                  fontSize="10.5"
+                  fill={isSelected ? '#d97706' : isHovered ? 'var(--ink)' : 'var(--mute)'}
+                  fontWeight={isSelected || isHovered ? '700' : '600'}
+                >
+                  {pic.length > 7 ? `${pic.slice(0, 6)}.` : pic}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Sumbu X Title */}
+          <text
+            x={padL + chartW / 2}
+            y={H - 10}
+            textAnchor="middle"
+            fontSize="10"
+            fill="var(--mute)"
+            fontWeight="700"
+          >
+            PIC
+          </text>
+        </svg>
+
+        {hoveredIdx !== null && (
+          <div
+            style={{
+              marginTop: '6px',
+              padding: '6px 12px',
+              background: 'var(--card)',
+              border: '1px solid var(--line)',
+              borderRadius: '8px',
+              fontSize: '11.5px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}
+          >
+            <span>
+              PIC: <b style={{ color: 'var(--ink)' }}>{data[hoveredIdx][0]}</b>
+            </span>
+            <span>
+              Beban Kontrak: <b style={{ color: '#2563eb' }}>{data[hoveredIdx][1]}</b> (
+              {total > 0 ? ((data[hoveredIdx][1] / total) * 100).toFixed(1) : 0}%)
+            </span>
+          </div>
+        )}
       </div>
 
-      <div className="pic-hbar-summary">
+      <div className="pic-vbar-chart-summary">
         <span>Total PIC: <b>{data.length} Orang</b></span>
         <span>Total Beban: <b>{total} Kontrak</b></span>
       </div>
@@ -528,34 +928,696 @@ function PicHorizontalBarChart({ data }: { data: [string, number][] }) {
   );
 }
 
-export default function App() {
-  const [activeTab, setActiveTab] = useState<'t1' | 't2' | 't4' | 't3'>('t1');
-  const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
+// Formal Statistical Distribution Chart for Contract Values (Horizontal Bar Chart)
+function StatisticalBucketChart({
+  data,
+  selectedBucket,
+  onSelectBucket,
+  totalFilteredContracts
+}: {
+  data: [string, number, string][];
+  selectedBucket?: string;
+  onSelectBucket?: (bucket: string) => void;
+  totalFilteredContracts: number;
+}) {
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
-  // Collapsible Sidebar like VSCode
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('sidebar-collapsed');
-      if (saved === 'true') return true;
-    }
-    return false;
+  const totalN = totalFilteredContracts > 0 ? totalFilteredContracts : data.reduce((a, b) => a + b[1], 0);
+
+  // Classification metadata for formal statistical tiers
+  const tierMeta: Record<string, { label: string; desc: string; color: string }> = {
+    '0 - 2.5M': { label: 'Mikro / Kecil', desc: '< Rp2.5 Miliar', color: '#3b82f6' },
+    '2.5M - 5M': { label: 'Menengah Bawah', desc: 'Rp2.5M - Rp5M', color: '#06b6d4' },
+    '5M - 10M': { label: 'Menengah Atas', desc: 'Rp5M - Rp10M', color: '#6366f1' },
+    '> 10M': { label: 'Signifikan / Besar', desc: '> Rp10 Miliar', color: '#8b5cf6' }
+  };
+
+  let runningCum = 0;
+  const statRows = data.map(([bucket, count]) => {
+    runningCum += count;
+    const propPct = totalN > 0 ? Number(((count / totalN) * 100).toFixed(1)) : 0;
+    const cumPct = totalN > 0 ? Number(((runningCum / totalN) * 100).toFixed(1)) : 0;
+    return {
+      bucket,
+      count,
+      propPct,
+      cumCount: runningCum,
+      cumPct,
+      meta: tierMeta[bucket] || { label: 'Interval', desc: '', color: '#2563eb' }
+    };
   });
 
-  useEffect(() => {
-    localStorage.setItem('sidebar-collapsed', String(sidebarCollapsed));
-  }, [sidebarCollapsed]);
+  // SVG Chart Geometry for Horizontal Bars
+  const W = 650;
+  const H = 340;
+  const padL = 130;
+  const padR = 65;
+  const padT = 38;
+  const padB = 48;
+  const chartW = W - padL - padR;
+  const chartH = H - padT - padB;
 
-  // Keyboard shortcut Ctrl+B or Cmd+B to toggle sidebar (VSCode standard)
+  const maxFreq = Math.max(...data.map(d => d[1]), 1);
+  const xCeil = Math.max(5, Math.ceil(maxFreq / 5) * 5);
+  const xTicks = [0, xCeil * 0.5, xCeil].map(v => Math.round(v));
+  const uniqueXTicks = Array.from(new Set(xTicks));
+
+  const binCount = statRows.length;
+  const rowH = chartH / Math.max(1, binCount);
+  const barH = Math.min(34, rowH * 0.65);
+
+  const getXPos = (val: number) => padL + (val / xCeil) * chartW;
+
+  return (
+    <div className="stat-dist-container">
+      <div className="stat-chart-card">
+        <div className="stat-chart-header">
+          <div className="stat-chart-legend">
+            <span style={{ fontSize: '11px', color: 'var(--mute)', fontWeight: 600 }}>
+              Total: <strong style={{ color: 'var(--ink)' }}>{totalN}</strong> kontrak
+            </span>
+          </div>
+          {selectedBucket && (
+            <span style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 700 }}>
+              Filter Terpilih: {selectedBucket} (Klik bar untuk melepas)
+            </span>
+          )}
+        </div>
+
+        <svg viewBox={`0 0 ${W} ${H}`} className="stat-chart-svg">
+          <defs>
+            <linearGradient id="hBarGrad" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" style={{ stopColor: 'var(--accent-2)', stopOpacity: 0.85 }} />
+              <stop offset="100%" style={{ stopColor: 'var(--accent-2)' }} />
+            </linearGradient>
+            <linearGradient id="hBarGradHover" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" style={{ stopColor: 'var(--accent-2)' }} />
+              <stop offset="100%" style={{ stopColor: 'var(--accent-2)' }} />
+            </linearGradient>
+            <linearGradient id="hBarGradActive" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="#fbbf24" />
+              <stop offset="100%" stopColor="#d97706" />
+            </linearGradient>
+          </defs>
+
+          {/* Sumbu Y Title */}
+          <text
+            transform={`translate(24, ${padT + chartH / 2}) rotate(-90)`}
+            textAnchor="middle"
+            fontSize="10"
+            fill="var(--mute)"
+            fontWeight="700"
+          >
+            Nilai Kontrak
+          </text>
+
+          {/* Grid lines and X-Axis ticks */}
+          {uniqueXTicks.map(val => {
+            const x = getXPos(val);
+            return (
+              <g key={`x-${val}`}>
+                <line
+                  x1={x}
+                  x2={x}
+                  y1={padT}
+                  y2={H - padB}
+                  stroke="var(--line)"
+                  strokeDasharray={val === 0 ? 'none' : '3 3'}
+                  strokeWidth={val === 0 ? 1.2 : 0.8}
+                />
+                <text
+                  x={x}
+                  y={H - padB + 15}
+                  textAnchor="middle"
+                  fontSize="10"
+                  fill="var(--mute)"
+                  fontWeight="600"
+                >
+                  {val}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Sumbu X Title */}
+          <text
+            x={padL + chartW / 2}
+            y={H - 8}
+            textAnchor="middle"
+            fontSize="10"
+            fill="var(--mute)"
+            fontWeight="700"
+          >
+            Jumlah Kontrak
+          </text>
+
+          {/* Horizontal Bars */}
+          {statRows.map((r, i) => {
+            const isHovered = hoveredIdx === i;
+            const isSelected = selectedBucket === r.bucket;
+            const barW = Math.max(4, (r.count / xCeil) * chartW);
+            const y = padT + i * rowH + (rowH - barH) / 2;
+
+            let fillGrad = 'url(#hBarGrad)';
+            if (isSelected) fillGrad = 'url(#hBarGradActive)';
+            else if (isHovered) fillGrad = 'url(#hBarGradHover)';
+
+            return (
+              <g
+                key={r.bucket}
+                onMouseEnter={() => setHoveredIdx(i)}
+                onMouseLeave={() => setHoveredIdx(null)}
+                onClick={() => onSelectBucket && onSelectBucket(isSelected ? '' : r.bucket)}
+                style={{ cursor: onSelectBucket ? 'pointer' : 'default' }}
+              >
+                {/* Row background highlight */}
+                <rect
+                  x={padL}
+                  y={padT + i * rowH}
+                  width={chartW}
+                  height={rowH}
+                  fill={isHovered ? 'rgba(124, 92, 224, 0.07)' : 'transparent'}
+                  rx={4}
+                />
+
+                {/* Left Label (Bucket & Category) */}
+                <text
+                  x={padL - 10}
+                  y={y + barH / 2 - 2}
+                  textAnchor="end"
+                  fontSize="11"
+                  fill={isSelected ? '#f59e0b' : 'var(--ink)'}
+                  fontWeight={isSelected ? '800' : '700'}
+                >
+                  {r.bucket}
+                </text>
+                <text
+                  x={padL - 10}
+                  y={y + barH / 2 + 10}
+                  textAnchor="end"
+                  fontSize="9"
+                  fill="var(--mute)"
+                  fontWeight="600"
+                >
+                  {r.meta.label}
+                </text>
+
+                {/* Horizontal Bar Rect */}
+                <rect
+                  x={padL}
+                  y={y}
+                  width={barW}
+                  height={barH}
+                  rx="4"
+                  ry="4"
+                  fill={fillGrad}
+                  stroke={isSelected ? '#f59e0b' : isHovered ? 'var(--accent-2)' : 'rgba(255,255,255,0.1)'}
+                  strokeWidth={isSelected ? 2 : 1}
+                />
+
+                {/* Value & Percentage on right of bar */}
+                <text
+                  x={padL + barW + 8}
+                  y={y + barH / 2 + 4}
+                  textAnchor="start"
+                  fontSize="11"
+                  fill={isSelected ? '#f59e0b' : 'var(--ink)'}
+                  fontWeight="800"
+                >
+                  {r.count} <tspan fontSize="9.5" fill="var(--mute)" fontWeight="700">({r.propPct}%)</tspan>
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+
+        {/* Dynamic Tooltip on Hover */}
+        {hoveredIdx !== null && (
+          <div
+            style={{
+              marginTop: '10px',
+              padding: '8px 14px',
+              background: 'var(--card)',
+              border: '1px solid var(--line)',
+              borderRadius: '8px',
+              fontSize: '11.5px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '8px'
+            }}
+          >
+            <span>
+              Interval: <b style={{ color: 'var(--ink)' }}>{statRows[hoveredIdx].bucket}</b> ({statRows[hoveredIdx].meta.label})
+            </span>
+            <span>
+              Frekuensi (f<sub>i</sub>): <b style={{ color: 'var(--accent-2-ink)' }}>{statRows[hoveredIdx].count} kontrak</b> ({statRows[hoveredIdx].propPct}%)
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Timeline Akhir Kontrak (Titik per Project terhadap Garis Hari Ini)
+interface TimelineDeadlineItem {
+  id: string | number;
+  source: 'G' | 'C'; // On going vs Close/Selesai
+  name: string;
+  pic: string;
+  endDate: string; // YYYY-MM-DD
+  diffDays: number; // endDate - today in days
+  statusCategory: 'LEWAT' | 'MENDEKATI' | 'AMAN';
+  progress: number;
+  rawStatus?: string;
+}
+
+function TimelineContractDeadlines({
+  items,
+  todayStr
+}: {
+  items: TimelineDeadlineItem[];
+  todayStr?: string;
+}) {
+  const [hoveredId, setHoveredId] = useState<string | number | null>(null);
+  const [filterCategory, setFilterCategory] = useState<'ALL' | 'LEWAT' | 'MENDEKATI' | 'AMAN'>('ALL');
+
+  if (items.length === 0) {
+    return <p className="src">Tidak ada data kontrak dengan tanggal akhir untuk filter ini.</p>;
+  }
+
+  const effectiveTodayStr = useMemo(() => {
+    if (todayStr) return todayStr;
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }, [todayStr]);
+
+  const todayMs = useMemo(() => new Date(effectiveTodayStr).getTime(), [effectiveTodayStr]);
+
+  // Summary counts
+  const countLewat = items.filter(it => it.statusCategory === 'LEWAT').length;
+  const countMendekati = items.filter(it => it.statusCategory === 'MENDEKATI').length;
+  const countAman = items.filter(it => it.statusCategory === 'AMAN').length;
+
+  // Filtered items
+  const displayItems = items.filter(it => {
+    if (filterCategory === 'ALL') return true;
+    return it.statusCategory === filterCategory;
+  });
+
+  // Calculate timeline min & max date for plotting
+  const allDates = items.map(it => new Date(it.endDate).getTime());
+  const minDateMs = Math.min(...allDates, todayMs - 30 * 86400000);
+  const maxDateMs = Math.max(...allDates, todayMs + 60 * 86400000);
+  const spanMs = maxDateMs - minDateMs || 1;
+
+  // SVG timeline visualization (Scatter dot plot against today line)
+  const W = 620;
+  const H = 160;
+  const padL = 40;
+  const padR = 40;
+  const padT = 30;
+  const padB = 40;
+  const chartW = W - padL - padR;
+
+  const toX = (dateMs: number) => padL + ((dateMs - minDateMs) / spanMs) * chartW;
+  const todayX = toX(todayMs);
+
+  const formatDate = (ms: number) =>
+    new Date(ms).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' });
+
+  // Month markers
+  const monthMarkers: { ms: number; label: string }[] = [];
+  const cur = new Date(minDateMs);
+  cur.setDate(1);
+  while (cur.getTime() <= maxDateMs) {
+    monthMarkers.push({
+      ms: cur.getTime(),
+      label: cur.toLocaleDateString('id-ID', { month: 'short', year: '2-digit' })
+    });
+    cur.setMonth(cur.getMonth() + 3); // every quarter
+  }
+
+  return (
+    <div className="timeline-deadline-panel">
+      {/* KPI Chips: Lewat, Mendekati, Aman */}
+      <div className="timeline-deadline-kpi-bar">
+        <button
+          type="button"
+          className={`td-kpi-chip danger ${filterCategory === 'LEWAT' ? 'active' : ''}`}
+          onClick={() => setFilterCategory(prev => (prev === 'LEWAT' ? 'ALL' : 'LEWAT'))}
+          style={{ cursor: 'pointer', background: filterCategory === 'LEWAT' ? 'rgba(239, 68, 68, 0.18)' : undefined }}
+        >
+          <span className="td-kpi-val">{countLewat}</span>
+          <span className="td-kpi-lbl">Lewat Batas Waktu</span>
+        </button>
+
+        <button
+          type="button"
+          className={`td-kpi-chip warning ${filterCategory === 'MENDEKATI' ? 'active' : ''}`}
+          onClick={() => setFilterCategory(prev => (prev === 'MENDEKATI' ? 'ALL' : 'MENDEKATI'))}
+          style={{ cursor: 'pointer', background: filterCategory === 'MENDEKATI' ? 'rgba(245, 158, 11, 0.18)' : undefined }}
+        >
+          <span className="td-kpi-val">{countMendekati}</span>
+          <span className="td-kpi-lbl">Mendekati (&lt; 60 Hari)</span>
+        </button>
+
+        <button
+          type="button"
+          className={`td-kpi-chip safe ${filterCategory === 'AMAN' ? 'active' : ''}`}
+          onClick={() => setFilterCategory(prev => (prev === 'AMAN' ? 'ALL' : 'AMAN'))}
+          style={{ cursor: 'pointer', background: filterCategory === 'AMAN' ? 'rgba(16, 185, 129, 0.18)' : undefined }}
+        >
+          <span className="td-kpi-val">{countAman}</span>
+          <span className="td-kpi-lbl">Aman (&gt; 60 Hari)</span>
+        </button>
+
+        <button
+          type="button"
+          className={`td-kpi-chip all ${filterCategory === 'ALL' ? 'active' : ''}`}
+          onClick={() => setFilterCategory('ALL')}
+          style={{ cursor: 'pointer', background: filterCategory === 'ALL' ? 'rgba(37, 99, 235, 0.12)' : undefined }}
+        >
+          <span className="td-kpi-val">{items.length}</span>
+          <span className="td-kpi-lbl">Total Proyek / Kontrak</span>
+        </button>
+      </div>
+
+      {/* SVG Scatter Plot: Points of projects against "Hari Ini" line */}
+      <div className="timeline-deadline-chart-card">
+        <svg viewBox={`0 0 ${W} ${H}`} className="timeline-deadline-chart-svg">
+          {/* Axis horizontal */}
+          <line
+            x1={padL}
+            x2={W - padR}
+            y1={H - padB}
+            y2={H - padB}
+            stroke="var(--line)"
+            strokeWidth={1.5}
+          />
+
+          {/* Month tick marks */}
+          {monthMarkers.map((m, idx) => {
+            const x = toX(m.ms);
+            if (x < padL || x > W - padR) return null;
+            return (
+              <g key={idx}>
+                <line
+                  x1={x}
+                  x2={x}
+                  y1={H - padB}
+                  y2={H - padB + 5}
+                  stroke="var(--line)"
+                />
+                <text
+                  x={x}
+                  y={H - padB + 16}
+                  textAnchor="middle"
+                  fontSize="10"
+                  fill="var(--mute)"
+                >
+                  {m.label}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Lewat Zone shading (Left of Today) */}
+          <rect
+            x={padL}
+            y={padT - 10}
+            width={Math.max(0, todayX - padL)}
+            height={H - padT - padB + 10}
+            fill="rgba(239, 68, 68, 0.04)"
+            rx={4}
+          />
+
+          {/* Mendekati Zone shading (0 to 60 days right of Today) */}
+          {(() => {
+            const endMendekatiX = toX(todayMs + 60 * 86400000);
+            const wM = Math.max(0, Math.min(W - padR, endMendekatiX) - todayX);
+            return (
+              <rect
+                x={todayX}
+                y={padT - 10}
+                width={wM}
+                height={H - padT - padB + 10}
+                fill="rgba(245, 158, 11, 0.05)"
+                rx={4}
+              />
+            );
+          })()}
+
+          {/* Vertical "HARI INI" Line */}
+          <line
+            x1={todayX}
+            x2={todayX}
+            y1={padT - 14}
+            y2={H - padB + 4}
+            stroke="#ef4444"
+            strokeWidth={2}
+            strokeDasharray="4 3"
+          />
+
+          {/* "Hari Ini" Marker Label */}
+          <g transform={`translate(${todayX}, ${padT - 16})`}>
+            <rect
+              x={-28}
+              y={-14}
+              width={56}
+              height={16}
+              rx={4}
+              fill="#ef4444"
+            />
+            <text
+              x={0}
+              y={-3}
+              textAnchor="middle"
+              fill="#ffffff"
+              fontSize="9.5"
+              fontWeight="800"
+            >
+              HARI INI
+            </text>
+          </g>
+
+          {/* Project Points (Scatter circles staggered vertically to avoid overlaps) */}
+          {displayItems.map((item, idx) => {
+            const itemMs = new Date(item.endDate).getTime();
+            const cx = toX(itemMs);
+            // Stagger y across 4 lanes
+            const lane = idx % 4;
+            const cy = padT + 12 + lane * 18;
+            const isHovered = hoveredId === item.id;
+
+            let color = '#10b981'; // Aman
+            if (item.statusCategory === 'LEWAT') color = '#ef4444';
+            else if (item.statusCategory === 'MENDEKATI') color = '#f59e0b';
+
+            return (
+              <g
+                key={item.id}
+                onMouseEnter={() => setHoveredId(item.id)}
+                onMouseLeave={() => setHoveredId(null)}
+              >
+                {/* Thin stem connecting to axis */}
+                <line
+                  x1={cx}
+                  x2={cx}
+                  y1={cy}
+                  y2={H - padB}
+                  stroke={color}
+                  strokeWidth={0.8}
+                  strokeDasharray="2 2"
+                  opacity={isHovered ? 0.9 : 0.35}
+                />
+
+                {/* Circle point */}
+                <circle
+                  className="td-point-circle"
+                  cx={cx}
+                  cy={cy}
+                  r={isHovered ? 7.5 : 5}
+                  fill={color}
+                  stroke="#ffffff"
+                  strokeWidth={isHovered ? 2.5 : 1.5}
+                />
+              </g>
+            );
+          })}
+        </svg>
+
+        {hoveredId !== null ? (() => {
+          const hoveredItem = items.find(it => it.id === hoveredId);
+          if (!hoveredItem) return null;
+          return (
+            <div
+              style={{
+                marginTop: '8px',
+                padding: '8px 12px',
+                background: 'var(--card)',
+                border: '1px solid var(--line)',
+                borderRadius: '8px',
+                fontSize: '11.5px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.06)'
+              }}
+            >
+              <div>
+                <b style={{ color: 'var(--ink)' }}>{hoveredItem.name}</b>
+                <div style={{ color: 'var(--mute)', fontSize: '11px', marginTop: '2px' }}>
+                  PIC: {hoveredItem.pic} • Akhir: {hoveredItem.endDate} ({hoveredItem.source === 'G' ? 'On Going' : 'Close'})
+                </div>
+              </div>
+              <span
+                className={`td-item-status-tag ${
+                  hoveredItem.statusCategory === 'LEWAT'
+                    ? 'lewat'
+                    : hoveredItem.statusCategory === 'MENDEKATI'
+                    ? 'mendekati'
+                    : 'aman'
+                }`}
+              >
+                {hoveredItem.statusCategory === 'LEWAT'
+                  ? `Lewat ${Math.abs(hoveredItem.diffDays)} Hari`
+                  : hoveredItem.statusCategory === 'MENDEKATI'
+                  ? `Mendekati (${hoveredItem.diffDays} Hari lagi)`
+                  : `Aman (${hoveredItem.diffDays} Hari lagi)`}
+              </span>
+            </div>
+          );
+        })() : (
+          <p className="src" style={{ margin: '8px 0 0', textAlign: 'center', fontSize: '11px' }}>
+            Arahkan kursor ke titik project pada timeline untuk melihat detail proyek, PIC, batas waktu, dan status keterlambatan.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Helper to parse Indonesian date strings from BAMK or free text (e.g. "25 Jul 2024", "27 Desember 2024")
+function parseIndoDate(str: string | null | undefined): string | null {
+  if (!str) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  const match = str.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
+  if (!match) return null;
+  const d = match[1].padStart(2, '0');
+  const monthNames: Record<string, string> = {
+    jan: '01', januari: '01',
+    feb: '02', februari: '02',
+    mar: '03', maret: '03',
+    apr: '04', april: '04',
+    mei: '05', may: '05',
+    jun: '06', juni: '06',
+    jul: '07', juli: '07',
+    agu: '08', agustus: '08', aug: '08',
+    sep: '09', september: '09',
+    okt: '10', oktober: '10', oct: '10',
+    nov: '11', november: '11',
+    des: '12', desember: '12', dec: '12',
+  };
+  const m = monthNames[match[2].toLowerCase().slice(0, 3)] || monthNames[match[2].toLowerCase()] || '01';
+  const y = match[3];
+  return `${y}-${m}-${d}`;
+}
+
+// Convert date string YYYY-MM-DD or YYYY-MM to Kurva S month index (0 = Jan 2024, 31 = Agu 2026, 32 = Sep 2026)
+function dateToKurvaMonthIndex(dateStr: string): number {
+  if (!dateStr) return 31;
+  const clean = dateStr.trim();
+  const isoMatch = clean.match(/^(\d{4})-(\d{1,2})/);
+  if (isoMatch) {
+    const y = Number(isoMatch[1]);
+    const m = Number(isoMatch[2]);
+    const idx = (y - 2024) * 12 + (m - 1);
+    return Math.max(0, Math.min(32, idx));
+  }
+  const textMatch = clean.match(/([a-zA-Z]+)\s*(\d{4})/);
+  if (textMatch) {
+    const monthNames: Record<string, number> = {
+      jan: 0, januari: 0,
+      feb: 1, februari: 1,
+      mar: 2, maret: 2,
+      apr: 3, april: 3,
+      mei: 4, may: 4,
+      jun: 5, juni: 5, june: 5,
+      jul: 6, juli: 6, july: 6,
+      agu: 7, agustus: 7, aug: 7, august: 7,
+      sep: 8, september: 8,
+      okt: 9, oktober: 9, oct: 9, october: 9,
+      nov: 10, november: 10,
+      des: 11, desember: 11, dec: 11, december: 11
+    };
+    const mKey = textMatch[1].toLowerCase().slice(0, 3);
+    const mIdx = monthNames[mKey] ?? 7;
+    const y = Number(textMatch[2]);
+    const idx = (y - 2024) * 12 + mIdx;
+    return Math.max(0, Math.min(32, idx));
+  }
+  const parts = clean.split('-');
+  if (parts.length >= 2) {
+    const y = Number(parts[0]);
+    const m = Number(parts[1]);
+    const idx = (y - 2024) * 12 + (m - 1);
+    return Math.max(0, Math.min(32, idx));
+  }
+  return 31;
+}
+
+// Check if a MasterProject overlaps with the selected date range
+function isProjectInDateRange(m: MasterProject, start: string, end: string): boolean {
+  if (!start && !end) return true;
+  const pStart = parseIndoDate(m.bamk) || '2024-01-01';
+  const pEnd = m.akd || '2027-12-31';
+  if (start && pEnd < start) return false;
+  if (end && pStart > end) return false;
+  return true;
+}
+
+const NAV_ITEMS = [
+  { id: 't1', title: 'Overview', sub: 'Ringkasan & KPI Portofolio', Icon: LayoutDashboard },
+  { id: 't2', title: 'Detail Project', sub: 'Daftar Project & Status Update', Icon: FolderKanban },
+  { id: 't4', title: 'Kurva S', sub: 'Plan vs Realisasi Progres', Icon: TrendingUp },
+  { id: 't3', title: 'Document Tracking', sub: 'Kelengkapan Dokumen Kontrak', Icon: FileCheck2 },
+] as const;
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState<'t1' | 't2' | 't4' | 't3'>('t1');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPinned, setMenuPinned] = useState<boolean>(
+    () => typeof window !== 'undefined' && localStorage.getItem('menu-pinned') === 'true'
+  );
+
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    localStorage.setItem('menu-pinned', String(menuPinned));
+  }, [menuPinned]);
+
+  const drawerVisible = menuOpen || menuPinned;
+
+  const pickTab = (id: typeof activeTab) => {
+    setActiveTab(id);
+    if (!menuPinned) setMenuOpen(false); // auto-hide setelah pilih menu
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault();
-        setSidebarCollapsed(prev => !prev);
+        setMenuOpen(p => !p);
       }
+      if (e.key === 'Escape' && !menuPinned) setMenuOpen(false);
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [menuPinned]);
 
   // Dark and Light Mode System
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -591,17 +1653,55 @@ export default function App() {
   const [kSel, setKSel] = useState<string>('p'); // 'p' or project index string
 
   // Tab 3 (Kelengkapan dokumen) Filters
-  const [dsS, setDsS] = useState<string>('G'); // G, C, ''
+  const [dsS, setDsS] = useState<string>(''); // G, C, ''
   const [dsP, setDsP] = useState<string>(''); // PIC
   const [dsJ, setDsJ] = useState<string>(''); // '', 'U', 'V'
   const [dsB, setDsB] = useState<string>(''); // Bucket
+
+  // Filter Rentang Tanggal Kalender (Global Across All Pages)
+  // Isi input tanggal (apa adanya yang dipilih user)
+  const [startInput, setStartInput] = useState<string>(''); // YYYY-MM-DD
+  const [endInput, setEndInput] = useState<string>(''); // YYYY-MM-DD
+
+  // Filter tanggal aktif secara mandiri maupun bersamaan:
+  // Merespons seketika jika user hanya memilih batas akhir (misal sampai Juni 2026),
+  // batas awal saja, maupun ketika rentang awal dan akhir dipilih bersamaan.
+  const validStart = startInput && startInput >= '1900-01-01' ? startInput : '';
+  const validEnd = endInput && endInput >= '1900-01-01' ? endInput : '';
+  const dateStart = validStart && validEnd && validStart > validEnd ? '' : validStart;
+  const dateEnd = validEnd;
+
+  // Handler Reset Filter Global (Mereset seluruh filter aktif + rentang tanggal)
+  const handleResetFilters = () => {
+    setFs('');
+    setFo('');
+    setGs('');
+    setSs('');
+    setDsS('');
+    setDsP('');
+    setDsJ('');
+    setDsB('');
+    setKSel('p');
+    setGlobalSearch('');
+    setStartInput('');
+    setEndInput('');
+  };
 
   // Project Status Updates & History State (Persisted in localStorage)
   const [projectUpdates, setProjectUpdates] = useState<Record<number, ProjectStatusUpdate>>(() => {
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('project_status_updates_v1');
-        if (saved) return JSON.parse(saved);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          Object.keys(parsed).forEach(k => {
+            const no = Number(k);
+            if (parsed[no] && (!parsed[no].author || /sistem|bima|user|tim\s*proyek/i.test(parsed[no].author))) {
+              parsed[no].author = getProjectPic(no);
+            }
+          });
+          return parsed;
+        }
       } catch (e) {
         console.error(e);
       }
@@ -613,7 +1713,21 @@ export default function App() {
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('project_status_history_v1');
-        if (saved) return JSON.parse(saved);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          Object.keys(parsed).forEach(k => {
+            const no = Number(k);
+            if (Array.isArray(parsed[no])) {
+              parsed[no] = parsed[no].map((entry: StatusHistoryEntry) => {
+                if (!entry.author || /sistem|bima|user|tim\s*proyek/i.test(entry.author)) {
+                  return { ...entry, author: getProjectPic(no) };
+                }
+                return entry;
+              });
+            }
+          });
+          return parsed;
+        }
       } catch (e) {
         console.error(e);
       }
@@ -662,41 +1776,162 @@ export default function App() {
     return projects.filter(m => m.g === 'ON GOING');
   }, [projects]);
 
-  const dev = K.port.p[31]! - K.port.r[31]!;
+  // Dynamic Kurva S Cutoff & Range based on Date Filter (Prioritas tanggal akhir, fallback tanggal awal)
+  const effectiveCutoffDate = dateEnd || dateStart;
 
-  // Helper for remaining days
-  const today = useMemo(() => new Date(new Date().toDateString()), []);
+  const cutoffMonthIdx = useMemo(() => {
+    if (effectiveCutoffDate) {
+      const idx = dateToKurvaMonthIndex(effectiveCutoffDate);
+      return Math.min(31, idx);
+    }
+    return 31; // Default Agu 2026 (Data realisasi terakhir)
+  }, [effectiveCutoffDate]);
+
+  // True kalau tanggal cut-off melewati data Kurva S (data terakhir: Agu 2026)
+  const dateEndBeyondData = !!effectiveCutoffDate && dateToKurvaMonthIndex(effectiveCutoffDate) > 31;
+
+  const startMonthIdx = useMemo(() => {
+    if (dateStart) {
+      return dateToKurvaMonthIndex(dateStart);
+    }
+    return 0; // Default Jan 2024
+  }, [dateStart]);
+
+  const cutoffMonthLabel = useMemo(() => {
+    const mn = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    if (effectiveCutoffDate) {
+      const clean = effectiveCutoffDate.trim();
+      const isoMatch = clean.match(/^(\d{4})-(\d{1,2})/);
+      if (isoMatch) {
+        const y = Number(isoMatch[1]);
+        const m = Number(isoMatch[2]);
+        if (m >= 1 && m <= 12) {
+          return `${mn[m - 1]} ${y}`;
+        }
+      }
+    }
+    const month = mn[cutoffMonthIdx % 12];
+    const year = 2024 + Math.floor(cutoffMonthIdx / 12);
+    return `${month} ${year}`;
+  }, [effectiveCutoffDate, cutoffMonthIdx]);
+
+  const devVal = useMemo(() => {
+    const p = K.port.p[cutoffMonthIdx] ?? 0;
+    const r = K.port.r[cutoffMonthIdx] ?? 0;
+    return Number((r - p).toFixed(1));
+  }, [cutoffMonthIdx]);
+
+  // Dynamic current date (Hari ini) - otomatis mengikuti pergantian hari dan tanggal secara real-time
+  const [currentDate, setCurrentDate] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentDate(new Date());
+    }, 60000);
+
+    const handleRefreshDate = () => {
+      if (document.visibilityState === 'visible') {
+        setCurrentDate(new Date());
+      }
+    };
+    document.addEventListener('visibilitychange', handleRefreshDate);
+    window.addEventListener('focus', handleRefreshDate);
+
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', handleRefreshDate);
+      window.removeEventListener('focus', handleRefreshDate);
+    };
+  }, []);
+
+  const todayIso = useMemo(() => {
+    const y = currentDate.getFullYear();
+    const m = String(currentDate.getMonth() + 1).padStart(2, '0');
+    const d = String(currentDate.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }, [currentDate]);
+
+  const todayDisplayLabel = useMemo(() => {
+    return currentDate.toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    });
+  }, [currentDate]);
+
+  const todayFullLabel = useMemo(() => {
+    return currentDate.toLocaleDateString('id-ID', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    });
+  }, [currentDate]);
+
+  // Helper for remaining / late days (selisih hari terhadap hari ini secara dinamis & presisi kalender)
   const sisa = useCallback((iso: string | null) => {
     if (!iso) return null;
-    return Math.round((new Date(iso).getTime() - today.getTime()) / 864e5);
-  }, [today]);
+    const now = currentDate;
+    const todayMidnight = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
 
-  // Tab 1 Filtered List
+    const match = iso.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (match) {
+      const targetMidnight = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+      return Math.round((targetMidnight - todayMidnight) / 86400000);
+    }
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return null;
+    const targetMidnight = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+    return Math.round((targetMidnight - todayMidnight) / 86400000);
+  }, [currentDate]);
+
+  // Tab 1 Filtered List (Respects Date Range)
   const homeList = useMemo(() => {
     return P.map((m, i) => ({
       m,
       i,
       o: OW[i] || m.pem,
     })).filter(x => {
-      const matchStatus = !fs || x.m.st === fs;
+      const matchStatus =
+        !fs ||
+        x.m.st === fs ||
+        (fs === 'DONE' && (x.m.st.startsWith('DONE') || x.m.st === 'SELESAI')) ||
+        (fs === 'LELANG / AANWIJZING' && (x.m.st.includes('LELANG') || x.m.st.includes('AANWIJZING')));
       const matchOwner = !fo || x.o === fo;
-      const matchSearch = !globalSearch || x.m.n.toLowerCase().includes(globalSearch.toLowerCase()) || x.o.toLowerCase().includes(globalSearch.toLowerCase());
-      return matchStatus && matchOwner && matchSearch;
+      const matchSearch =
+        !globalSearch ||
+        x.m.n.toLowerCase().includes(globalSearch.toLowerCase()) ||
+        x.o.toLowerCase().includes(globalSearch.toLowerCase());
+      const matchDate = isProjectInDateRange(x.m, dateStart, dateEnd);
+      return matchStatus && matchOwner && matchSearch && matchDate;
     });
-  }, [P, fs, fo, globalSearch]);
+  }, [P, fs, fo, globalSearch, dateStart, dateEnd]);
 
-  // Tab 1 Remaining days sorted
+  // Tab 1 Remaining days sorted (Akhir kontrak within selected Date Range)
   const homeDeadlineList = useMemo(() => {
     return homeList
-      .map(x => ({ x, d: sisa(x.m.akd) }))
+      .map(x => {
+        const rawD = sisa(x.m.akd);
+        const isDone = x.m.st === 'DONE' || x.m.st.startsWith('DONE') || x.m.st === 'SELESAI';
+        const d = isDone && rawD !== null && rawD < 0 ? 0 : rawD;
+        return { x, d };
+      })
       .filter((y): y is { x: typeof homeList[0]; d: number } => y.d !== null)
+      .filter(y => {
+        if (!dateStart && !dateEnd) return true;
+        const akd = y.x.m.akd;
+        if (!akd) return false;
+        if (dateStart && akd < dateStart) return false;
+        if (dateEnd && akd > dateEnd) return false;
+        return true;
+      })
       .sort((a, b) => a.d - b.d);
-  }, [homeList, sisa]);
+  }, [homeList, sisa, dateStart, dateEnd]);
 
   // Tab 1 At Risk & Delayed
   const homeCriticalList = useMemo(() => {
     return homeList
-      .filter(x => x.m.st !== 'ON TRACK')
+      .filter(x => x.m.st !== 'ON TRACK' && x.m.st !== 'DONE' && !x.m.st.startsWith('DONE') && x.m.st !== 'SELESAI')
       .sort((a, b) => {
         const dvA = (a.m.rl ?? 0) - (a.m.pl ?? 0);
         const dvB = (b.m.rl ?? 0) - (b.m.pl ?? 0);
@@ -704,15 +1939,23 @@ export default function App() {
       });
   }, [homeList]);
 
-  // Tab 2 Filtered List
+  // Tab 2 Filtered List (Respects Date Range)
   const detailList = useMemo(() => {
     return projects.map((m, i) => ({ m, i })).filter(({ m }) => {
       const matchKelompok = !gs || m.g === gs;
-      const matchStatus = !ss || m.st === ss;
-      const matchSearch = !globalSearch || m.n.toLowerCase().includes(globalSearch.toLowerCase()) || m.pem.toLowerCase().includes(globalSearch.toLowerCase());
-      return matchKelompok && matchStatus && matchSearch;
+      const matchStatus =
+        !ss ||
+        m.st === ss ||
+        (ss === 'DONE' && (m.st.startsWith('DONE') || m.st === 'SELESAI')) ||
+        (ss === 'LELANG / AANWIJZING' && (m.st.includes('LELANG') || m.st.includes('AANWIJZING')));
+      const matchSearch =
+        !globalSearch ||
+        m.n.toLowerCase().includes(globalSearch.toLowerCase()) ||
+        m.pem.toLowerCase().includes(globalSearch.toLowerCase());
+      const matchDate = isProjectInDateRange(m, dateStart, dateEnd);
+      return matchKelompok && matchStatus && matchSearch && matchDate;
     });
-  }, [projects, gs, ss, globalSearch]);
+  }, [projects, gs, ss, globalSearch, dateStart, dateEnd]);
 
   // Status update modal manager state
   const [statusViewMode, setStatusViewMode] = useState<'view' | 'edit' | 'history'>('view');
@@ -723,12 +1966,30 @@ export default function App() {
   const [editNote, setEditNote] = useState<string>('');
   const [statusToast, setStatusToast] = useState<string | null>(null);
 
+  // Helper to get author/PIC for a project (avoids placeholder strings like "Sistem / BIMA" or "User / Tim Proyek")
+  const getProjectAuthor = useCallback((p?: MasterProject | null): string => {
+    if (!p) return 'Muhaimin';
+    const upAuthor = projectUpdates[p.no]?.author;
+    if (upAuthor && !/sistem|bima|user|tim\s*proyek/i.test(upAuthor)) {
+      return upAuthor;
+    }
+    return p.pic || getProjectPic(p.no);
+  }, [projectUpdates]);
+
   // Helper to get history for currently selected project
   const currentHistory = useMemo((): StatusHistoryEntry[] => {
     if (selectedIdx === null || !projects[selectedIdx]) return [];
     const p = projects[selectedIdx];
+    const defaultPic = p.pic || getProjectPic(p.no);
     const list = statusHistory[p.no];
-    if (list && list.length > 0) return list;
+    if (list && list.length > 0) {
+      return list.map(entry => {
+        if (!entry.author || /sistem|bima|user|tim\s*proyek/i.test(entry.author)) {
+          return { ...entry, author: defaultPic };
+        }
+        return entry;
+      });
+    }
     return [
       {
         id: `baseline-${p.no}`,
@@ -738,7 +1999,7 @@ export default function App() {
         mit: M[selectedIdx].mit,
         ls: M[selectedIdx].ls,
         note: 'Baseline status awal data BIMA',
-        author: 'Sistem'
+        author: defaultPic
       }
     ];
   }, [selectedIdx, projects, statusHistory]);
@@ -761,6 +2022,8 @@ export default function App() {
         minute: '2-digit'
       });
 
+    const authorName = p.pic || getProjectPic(p.no);
+
     const newEntry: StatusHistoryEntry = {
       id: `up-${Date.now()}`,
       timestamp: timestampStr,
@@ -769,7 +2032,7 @@ export default function App() {
       mit: editMit.trim() || p.mit,
       ls: editLs.trim() || p.ls,
       note: editNote.trim() || 'Pembaruan status berkala',
-      author: 'User / Tim Proyek'
+      author: authorName
     };
 
     setProjectUpdates(prev => ({
@@ -779,7 +2042,8 @@ export default function App() {
         sit: editSit.trim() || p.sit,
         mit: editMit.trim() || p.mit,
         ls: editLs.trim() || p.ls,
-        lastUpdated: timestampStr
+        lastUpdated: timestampStr,
+        author: authorName
       }
     }));
 
@@ -793,7 +2057,7 @@ export default function App() {
           mit: M[selectedIdx].mit,
           ls: M[selectedIdx].ls,
           note: 'Baseline status awal data BIMA',
-          author: 'Sistem'
+          author: authorName
         }
       ];
       return {
@@ -802,7 +2066,7 @@ export default function App() {
       };
     });
 
-    setStatusToast('Status update berhasil diperbarui dan dicatat dalam riwayat!');
+    setStatusToast(`Status update berhasil diperbarui oleh ${authorName} dan dicatat dalam riwayat!`);
     setTimeout(() => setStatusToast(null), 3500);
     setStatusViewMode('view');
   };
@@ -811,6 +2075,11 @@ export default function App() {
   const handleRestoreHistory = (entry: StatusHistoryEntry) => {
     if (selectedIdx === null || !projects[selectedIdx]) return;
     const p = projects[selectedIdx];
+    const defaultPic = p.pic || getProjectPic(p.no);
+    const authorName = entry.author && !/sistem|bima|user|tim\s*proyek/i.test(entry.author)
+      ? entry.author
+      : defaultPic;
+
     setProjectUpdates(prev => ({
       ...prev,
       [p.no]: {
@@ -818,10 +2087,11 @@ export default function App() {
         sit: entry.sit,
         mit: entry.mit,
         ls: entry.ls,
-        lastUpdated: entry.timestamp
+        lastUpdated: entry.timestamp,
+        author: authorName
       }
     }));
-    setStatusToast(`Status update berhasil dipulihkan ke versi (${entry.timestamp})`);
+    setStatusToast(`Status update berhasil dipulihkan ke versi (${entry.timestamp}) oleh ${authorName}`);
     setTimeout(() => setStatusToast(null), 3500);
     setStatusViewMode('view');
   };
@@ -830,41 +2100,47 @@ export default function App() {
   const handleDeleteHistory = (entryId: string) => {
     if (selectedIdx === null || !projects[selectedIdx]) return;
     const p = projects[selectedIdx];
-    const confirmDelete = window.confirm('Apakah Anda yakin ingin menghapus catatan status update ini dari riwayat?');
-    if (!confirmDelete) return;
 
-    setStatusHistory(prev => {
-      const currentList = prev[p.no] || [];
-      const updatedList = currentList.filter(item => item.id !== entryId);
+    const currentList = statusHistory[p.no] || currentHistory;
+    const updatedList = currentList.filter(item => item.id !== entryId);
 
-      // If active update matches the deleted one, sync active to the next top entry or reset
-      if (updatedList.length > 0) {
-        const top = updatedList[0];
-        setProjectUpdates(pUp => ({
-          ...pUp,
+    // 1. Update status history state
+    setStatusHistory(prev => ({
+      ...prev,
+      [p.no]: updatedList
+    }));
+
+    // 2. Sync projectUpdates to the new top entry or reset back to baseline
+    if (updatedList.length > 0) {
+      const top = updatedList[0];
+      if (top.id.startsWith('baseline-') && updatedList.length === 1) {
+        setProjectUpdates(prev => {
+          const copy = { ...prev };
+          delete copy[p.no];
+          return copy;
+        });
+      } else {
+        setProjectUpdates(prev => ({
+          ...prev,
           [p.no]: {
             st: top.st,
             sit: top.sit,
             mit: top.mit,
             ls: top.ls,
-            lastUpdated: top.timestamp
+            lastUpdated: top.timestamp,
+            author: top.author
           }
         }));
-      } else {
-        setProjectUpdates(pUp => {
-          const copy = { ...pUp };
-          delete copy[p.no];
-          return copy;
-        });
       }
+    } else {
+      setProjectUpdates(prev => {
+        const copy = { ...prev };
+        delete copy[p.no];
+        return copy;
+      });
+    }
 
-      return {
-        ...prev,
-        [p.no]: updatedList
-      };
-    });
-
-    setStatusToast('Catatan riwayat berhasil dihapus.');
+    setStatusToast('Catatan status update berhasil dihapus dari riwayat.');
     setTimeout(() => setStatusToast(null), 3000);
   };
 
@@ -882,6 +2158,52 @@ export default function App() {
   const stText = (s: string) => {
     if (/ACTIVE/i.test(s)) return '#0f172a';
     return '#ffffff';
+  };
+
+  const getOwnerBadge = (pem: string) => {
+    if (/semarang/i.test(pem)) return { code: 'TS', name: 'TPK Semarang' };
+    if (/regional\s*iv|reg\.\s*iv/i.test(pem)) return { code: 'PR', name: 'Pelindo Reg. IV' };
+    if (/multi\s*terminal/i.test(pem)) return { code: 'PM', name: 'Pelindo Multi Terminal' };
+    if (/prima\s*terminal/i.test(pem)) return { code: 'PT', name: 'Prima Terminal' };
+    if (/surabaya|tps/i.test(pem)) return { code: 'TS', name: 'TPK Surabaya' };
+    if (/ipc\s*terminal/i.test(pem)) return { code: 'IT', name: 'IPC Terminal Petikemas' };
+    if (/pantoloan/i.test(pem)) return { code: 'TP', name: 'TPK Pantoloan' };
+    if (/ternate/i.test(pem)) return { code: 'TT', name: 'TPK Ternate' };
+    if (/banjarmasin/i.test(pem)) return { code: 'TB', name: 'TPK Banjarmasin' };
+    if (/makassar/i.test(pem)) return { code: 'NM', name: 'TPK New Makassar' };
+    if (/teluk\s*lamong/i.test(pem)) return { code: 'TL', name: 'Terminal Teluk Lamong' };
+    if (/ambon/i.test(pem)) return { code: 'TA', name: 'TPK Ambon' };
+    if (/bitung/i.test(pem)) return { code: 'TB', name: 'TPK Bitung' };
+    if (/pelindo\s*terminal\s*petikemas/i.test(pem)) return { code: 'PT', name: 'Pelindo Terminal Petikemas' };
+    const clean = pem.replace(/^(PT|Persero)\s+/gi, '').trim();
+    const words = clean.split(/\s+/).filter(w => !/^(dan|di|ke|dari|-)$/i.test(w));
+    const code = ((words[0]?.[0] || 'P') + (words[1]?.[0] || 'T')).toUpperCase();
+    return { code, name: clean };
+  };
+
+  const formatStatusLabel = (s: string) => {
+    if (/at risk/i.test(s)) return 'At risk';
+    if (/delayed/i.test(s) && !/done/i.test(s)) return 'Delayed';
+    if (/on track/i.test(s)) return 'On track';
+    if (/done/i.test(s) || /selesai/i.test(s)) return 'Selesai';
+    if (/active/i.test(s)) return 'Active';
+    if (/lelang/i.test(s)) return 'Lelang';
+    return s;
+  };
+
+  const getGroupColor = (g: string) => {
+    if (g === 'ON GOING') return '#10b981';
+    if (g === 'SELESAI') return '#2563eb';
+    if (g === 'PO') return '#eab308';
+    return '#94a3b8';
+  };
+
+  const getGroupLabel = (g: string) => {
+    if (g === 'ON GOING') return 'On going';
+    if (g === 'SELESAI') return 'Selesai';
+    if (g === 'PO') return 'PO';
+    if (g === 'LELANG') return 'Lelang';
+    return g;
   };
 
   const openDetailModal = (idx: number) => {
@@ -906,7 +2228,14 @@ export default function App() {
 
   // Kurva S Line Chart Render Helper (Interactive with hover crosshair & tooltip)
   const renderKurvaSvg = (d: { p: (number | null)[]; r: (number | null)[] }) => {
-    return <InteractiveKurvaChart d={d} />;
+    return (
+      <InteractiveKurvaChart
+        d={d}
+        cutoffIdx={cutoffMonthIdx}
+        startMonthIdx={startMonthIdx}
+        cutoffLabel={cutoffMonthLabel}
+      />
+    );
   };
 
   // Horizontal bar helper
@@ -928,17 +2257,28 @@ export default function App() {
     ));
   };
 
-  // Tab 3 Filtered Contracts
+  // Tab 3 Filtered Contracts (Respects Date Range)
   const docFiltered = useMemo(() => {
     return C.filter(c => {
       const matchSource = !dsS || c.s === dsS;
       const matchPic = !dsP || c.pic === dsP;
       const matchJenis = !dsJ || c.j === dsJ || (dsJ === 'U' && c.j === 'D');
       const matchBucket = !dsB || c.b === dsB;
-      const matchSearch = !globalSearch || c.n.toLowerCase().includes(globalSearch.toLowerCase()) || c.pic.toLowerCase().includes(globalSearch.toLowerCase());
-      return matchSource && matchPic && matchJenis && matchBucket && matchSearch;
+      const matchSearch =
+        !globalSearch ||
+        c.n.toLowerCase().includes(globalSearch.toLowerCase()) ||
+        c.pic.toLowerCase().includes(globalSearch.toLowerCase());
+
+      let matchDate = true;
+      if (dateStart || dateEnd) {
+        const cStart = c.a || '2024-01-01';
+        const cEnd = c.e || '2027-12-31';
+        if (dateStart && cEnd < dateStart) matchDate = false;
+        if (dateEnd && cStart > dateEnd) matchDate = false;
+      }
+      return matchSource && matchPic && matchJenis && matchBucket && matchSearch && matchDate;
     });
-  }, [dsS, dsP, dsJ, dsB, globalSearch]);
+  }, [dsS, dsP, dsJ, dsB, globalSearch, dateStart, dateEnd]);
 
   const docStats = useMemo(() => {
     const cnt: Record<string, number> = { A: 0, T: 0, K: 0, H: 0, P: 0, D: 0 };
@@ -969,6 +2309,93 @@ export default function App() {
     return BK.map(b => [b, docFiltered.filter(c => c.b === b).length, 'var(--accent)'] as [string, number, string]);
   }, [docFiltered]);
 
+  // Comprehensive Deadline Timeline Items (Khusus Data On Going with end dates)
+  // Evaluates each project against "hari ini" (current date context secara dinamis)
+  const contractDeadlineItems = useMemo<TimelineDeadlineItem[]>(() => {
+    const now = currentDate;
+    const todayMidnight = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    const dayMs = 86400000;
+    const itemsMap = new Map<string, TimelineDeadlineItem>();
+
+    // 1. From docFiltered (Contracts C) that have an end date (e) - Khusus On Going (c.s === 'G')
+    docFiltered.forEach(c => {
+      if (c.s === 'G' && c.e && /^\d{4}-\d{2}-\d{2}$/.test(c.e)) {
+        const [ey, em, ed] = c.e.split('-').map(Number);
+        const endMidnight = Date.UTC(ey, em - 1, ed);
+        const diffDays = Math.round((endMidnight - todayMidnight) / dayMs);
+        let statusCategory: 'LEWAT' | 'MENDEKATI' | 'AMAN' = 'AMAN';
+        if (diffDays < 0) {
+          statusCategory = 'LEWAT';
+        } else if (diffDays <= 60) {
+          statusCategory = 'MENDEKATI';
+        }
+
+        const id = `c_${c.w}_${c.n}_${c.e}`;
+        itemsMap.set(id, {
+          id,
+          source: 'G',
+          name: c.n,
+          pic: c.pic,
+          endDate: c.e,
+          diffDays,
+          statusCategory,
+          progress: c.p,
+          rawStatus: 'On Going'
+        });
+      }
+    });
+
+    // 2. Also incorporate Master Projects (M) with akd that are ON GOING
+    projects.forEach(m => {
+      if (m.g === 'ON GOING' && m.akd && /^\d{4}-\d{2}-\d{2}$/.test(m.akd)) {
+        // Respect PIC filter
+        const mPic = m.pic || getProjectPic(m.no);
+        if (dsP && mPic.toUpperCase() !== dsP.toUpperCase()) return;
+        // Respect search filter
+        if (
+          globalSearch &&
+          !m.n.toLowerCase().includes(globalSearch.toLowerCase()) &&
+          !mPic.toLowerCase().includes(globalSearch.toLowerCase())
+        ) {
+          return;
+        }
+        // Respect date range filter if active
+        if (dateStart && m.akd < dateStart) return;
+        if (dateEnd && m.akd > dateEnd) return;
+
+        const [my, mm, md] = m.akd.split('-').map(Number);
+        const endMidnight = Date.UTC(my, mm - 1, md);
+        const diffDays = Math.round((endMidnight - todayMidnight) / dayMs);
+        let statusCategory: 'LEWAT' | 'MENDEKATI' | 'AMAN' = 'AMAN';
+        if (diffDays < 0) {
+          statusCategory = 'LEWAT';
+        } else if (diffDays <= 60) {
+          statusCategory = 'MENDEKATI';
+        }
+
+        const id = `m_${m.no}_${m.akd}`;
+        if (!itemsMap.has(id)) {
+          itemsMap.set(id, {
+            id,
+            source: 'G',
+            name: m.n,
+            pic: mPic,
+            endDate: m.akd,
+            diffDays,
+            statusCategory,
+            progress: m.rl ?? 0,
+            rawStatus: m.st
+          });
+        }
+      }
+    });
+
+    return Array.from(itemsMap.values()).sort((a, b) => {
+      // Sort: Lewat first, then ascending by end date
+      return a.diffDays - b.diffDays;
+    });
+  }, [docFiltered, projects, dsP, globalSearch, dateStart, dateEnd, currentDate]);
+
   const timelineContracts = useMemo(() => {
     return docFiltered
       .filter(c => c.a && c.e && c.e >= c.a)
@@ -988,170 +2415,93 @@ export default function App() {
 
   return (
     <div className="app-container">
-      {/* LEFT SIDEBAR (Collapsible like VSCode) */}
-      <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${mobileMenuOpen ? 'open' : ''}`}>
-        {/* Floating edge toggle handle on the sidebar border */}
-        <button
-          type="button"
-          className="sidebar-edge-toggle"
-          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          title={sidebarCollapsed ? "Buka Menu Bar (Ctrl+B)" : "Sembunyikan Menu Bar (Ctrl+B)"}
-          aria-label="Toggle Menu Bar"
-        >
-          {sidebarCollapsed ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
-        </button>
+      {menuOpen && !menuPinned && (
+        <div className="drawer-backdrop" onClick={() => setMenuOpen(false)} />
+      )}
 
-        <div className="sidebar-header">
-          {!sidebarCollapsed ? (
-            <div className="sidebar-logo-container">
-              <img
-                src="/logo-bima.svg"
-                alt="PELINDO JASA MARITIM BIMA"
-                className="sidebar-logo-img"
-              />
-            </div>
-          ) : (
-            <div
-              className="sidebar-collapsed-logo"
-              title="PELINDO JASA MARITIM BIMA (Klik untuk buka menu)"
-              onClick={() => setSidebarCollapsed(false)}
-            >
-              <img
-                src="/logo-bima.svg"
-                alt="PELINDO BIMA"
-                className="sidebar-collapsed-logo-img"
-              />
-            </div>
-          )}
-        </div>
-
-        <div className="sidebar-menu">
-          {!sidebarCollapsed && <div className="menu-section-label">MAIN MENU</div>}
+      <aside
+        className={`drawer ${menuPinned ? 'pinned' : ''} ${drawerVisible ? 'open' : ''}`}
+        aria-hidden={!drawerVisible}
+      >
+        <div className="drawer-head">
+          <img src="/logo-bima.svg" alt="PT BIMA" className="drawer-logo" />
+          <div className="drawer-brand">
+            <b>PT. BIMA</b>
+            <span>DIVISI PERALATAN</span>
+          </div>
           <button
-            className={`nav-item ${activeTab === 't1' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveTab('t1');
-              setMobileMenuOpen(false);
-            }}
-            title="Overview"
+            className="drawer-icon-btn"
+            onClick={() => setMenuPinned(p => !p)}
+            title={menuPinned ? 'Lepas pin' : 'Pin menu'}
+            aria-label="Pin menu"
           >
-            <LayoutDashboard size={18} />
-            {!sidebarCollapsed && <span>Overview</span>}
+            {menuPinned ? <PinOff size={16} /> : <Pin size={16} />}
           </button>
-
           <button
-            className={`nav-item ${activeTab === 't2' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveTab('t2');
-              setMobileMenuOpen(false);
-            }}
-            title="Detail Project"
+            className="drawer-icon-btn"
+            onClick={() => { setMenuPinned(false); setMenuOpen(false); }}
+            aria-label="Tutup menu"
           >
-            <FolderKanban size={18} />
-            {!sidebarCollapsed && <span>Detail Project</span>}
-          </button>
-
-          {!sidebarCollapsed && <div className="menu-section-label">ANALISIS &amp; KONTRAK</div>}
-          <button
-            className={`nav-item ${activeTab === 't4' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveTab('t4');
-              setMobileMenuOpen(false);
-            }}
-            title="Kurva S"
-          >
-            <TrendingUp size={18} />
-            {!sidebarCollapsed && <span>Kurva S</span>}
-          </button>
-
-          <button
-            className={`nav-item ${activeTab === 't3' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveTab('t3');
-              setMobileMenuOpen(false);
-            }}
-            title="Document Tracking"
-          >
-            <FileCheck2 size={18} />
-            {!sidebarCollapsed && <span>Document Tracking</span>}
+            <X size={18} />
           </button>
         </div>
 
-        <div className="sidebar-footer">
-          {!sidebarCollapsed ? (
-            <div className="sidebar-help-card">
-              <h4>Divisi Peralatan</h4>
-              <p>PT Berkah Industri Mesin Angkat (BIMA)</p>
-              <button
-                className="sidebar-help-btn"
-                onClick={() => {
-                  setFs('');
-                  setFo('');
-                  setGs('');
-                  setSs('');
-                  setGlobalSearch('');
-                }}
-              >
-                Reset Semua Filter
-              </button>
-            </div>
-          ) : (
+        <nav className="drawer-nav">
+          {NAV_ITEMS.map(({ id, title, sub, Icon }) => (
             <button
-              type="button"
-              className="sidebar-collapsed-btn"
-              onClick={() => {
-                setFs('');
-                setFo('');
-                setGs('');
-                setSs('');
-                setGlobalSearch('');
-              }}
-              title="Reset Semua Filter"
-              aria-label="Reset Semua Filter"
+              key={id}
+              className={`drawer-item ${activeTab === id ? 'active' : ''}`}
+              onClick={() => pickTab(id)}
             >
-              <RotateCcw size={16} />
+              <Icon size={20} />
+              <span>
+                <b>{title}</b>
+                <small>{sub}</small>
+              </span>
             </button>
-          )}
+          ))}
+        </nav>
+
+        <div className="drawer-foot">
+          <button
+            className="drawer-reset"
+            onClick={handleResetFilters}
+          >
+            <RotateCcw size={14} /> Reset semua filter
+          </button>
+          <p>Divisi Peralatan<br />PT Berkah Industri Mesin Angkat (BIMA)</p>
         </div>
       </aside>
 
       {/* MAIN CONTENT AREA */}
       <div className="main-wrapper">
         {/* TOPBAR */}
-        <header className="topbar">
+        <header className="topbar topbar-hero">
           <div className="topbar-left">
-            <button
-              className="menu-toggle"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              aria-label="Toggle Menu"
-            >
-              {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
-            </button>
-            <button
-              type="button"
-              className="sidebar-toggle-btn"
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              title={sidebarCollapsed ? "Buka Menu Bar (Ctrl+B)" : "Sembunyikan Menu Bar (Ctrl+B)"}
-              aria-label="Toggle Menu Bar"
-            >
-              <PanelLeft size={18} />
-            </button>
+
+            {!menuPinned && (
+              <button className="menu-pill" onClick={() => setMenuOpen(true)} aria-label="Buka menu">
+                <Menu size={18} />
+              </button>
+            )}
+
             <div className="topbar-title">
               <h1>Dashboard Monitoring Project</h1>
-              <span>Divisi Peralatan Proyek</span>
+              <span>{NAV_ITEMS.find(n => n.id === activeTab)?.title || 'Overview'}</span>
             </div>
           </div>
 
           <div className="topbar-actions">
-            <div className="search-box">
-              <Search size={16} color="var(--mute)" />
-              <input
-                type="text"
-                placeholder="Cari nama project..."
-                value={globalSearch}
-                onChange={e => setGlobalSearch(e.target.value)}
-              />
-            </div>
+            <button
+              id="fr"
+              className="tg reset-filter-btn"
+              onClick={handleResetFilters}
+              title="Reset seluruh filter dan rentang tanggal"
+            >
+              <RotateCcw size={14} className="reset-filter-icon" />
+              <span>Reset Filter</span>
+            </button>
+
             <button
               className="theme-toggle-btn"
               onClick={toggleTheme}
@@ -1171,25 +2521,55 @@ export default function App() {
               )}
             </button>
           </div>
-        </header>
 
-        {/* PAGE CONTENT */}
-        <main className="page-content">
-          <div className="note">
-            Sistem pemantauan portofolio dan progres pekerjaan Mekanikal &amp; Elektrikal (ME) secara terpadu, menyajikan ringkasan eksekutif status proyek berjalan, analisis realisasi Kurva S terhadap rencana kumulatif, pemetaan mitigasi risiko kritis, serta pelacakan kelengkapan dokumen administrasi kontrak.
-          </div>
+          {/* FILTER BAR SATU BARIS (Rentang Tanggal + Filter Tab + Button Reset Filter di Kanan) */}
+          <div className="topbar-filters">
+            {/* Rentang Tanggal Kalender (Hadir di setiap page/tab) */}
+            <div className="topbar-date-group">
+              <div className="date-filter-label">
+                <Calendar size={14} />
+                <span>Rentang Tanggal</span>
+              </div>
 
-          {/* TAB 1: RINGKASAN */}
-          {activeTab === 't1' && (
-            <section id="t1">
-              <div className="filters">
+              <div className="date-inputs-wrapper">
+                <div className="date-input-item">
+                  <label htmlFor="filter-date-start">Awal</label>
+                  <input
+                    id="filter-date-start"
+                    type="date"
+                    className="date-native-input"
+                    value={startInput}
+                    onChange={e => setStartInput(e.target.value)}
+                    aria-label="Tanggal awal rentang"
+                  />
+                </div>
+
+                <span className="date-sep-arrow">s/d</span>
+
+                <div className="date-input-item">
+                  <label htmlFor="filter-date-end">Akhir</label>
+                  <input
+                    id="filter-date-end"
+                    type="date"
+                    className="date-native-input"
+                    value={endInput}
+                    onChange={e => setEndInput(e.target.value)}
+                    aria-label="Tanggal akhir rentang"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Filter spesifik tab Ringkasan (Tab 1) */}
+            {activeTab === 't1' && (
+              <>
                 <select
                   id="fs"
                   aria-label="Status"
                   value={fs}
                   onChange={e => setFs(e.target.value)}
                 >
-                  <option value="">Semua status</option>
+                  <option value="">Semua Status</option>
                   {Object.keys(SC).map(s => (
                     <option key={s} value={s}>
                       {s}
@@ -1202,7 +2582,7 @@ export default function App() {
                   value={fo}
                   onChange={e => setFo(e.target.value)}
                 >
-                  <option value="">Semua pemilik</option>
+                  <option value="">Semua Pemilik</option>
                   {Array.from(new Set(OW))
                     .sort()
                     .map(s => (
@@ -1211,30 +2591,188 @@ export default function App() {
                       </option>
                     ))}
                 </select>
-                <button
-                  id="fr"
-                  className="rs"
-                  onClick={() => {
-                    setFs('');
-                    setFo('');
-                    setGlobalSearch('');
-                  }}
-                >
-                  Reset Filter
-                </button>
-              </div>
+              </>
+            )}
 
+            {/* Filter spesifik tab Detail Project (Tab 2) */}
+            {activeTab === 't2' && (
+              <>
+                <select
+                  id="gs"
+                  aria-label="Kelompok"
+                  value={gs}
+                  onChange={e => setGs(e.target.value)}
+                >
+                  <option value="">Semua Kelompok</option>
+                  {GK.map(g => (
+                    <option key={g[0]} value={g[0]}>
+                      {g[1]}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  id="ss"
+                  aria-label="Status"
+                  value={ss}
+                  onChange={e => setSs(e.target.value)}
+                >
+                  <option value="">Semua Status</option>
+                  {Object.keys(SC).map(s => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+
+            {/* Filter spesifik tab Kurva S (Tab 4) */}
+            {activeTab === 't4' && (
+              <>
+                <select
+                  id="ksel"
+                  aria-label="Tampilkan proyek"
+                  value={kSel}
+                  onChange={e => setKSel(e.target.value)}
+                >
+                  <option value="p">Seluruh Proyek</option>
+                  {K.names.map((n, i) => (
+                    <option key={i} value={String(i)}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  id="kcutoff-sel"
+                  aria-label="Posisi Cutoff Kurva S"
+                  value={
+                    endInput
+                      ? endInput.slice(0, 7)
+                      : startInput
+                      ? startInput.slice(0, 7)
+                      : ''
+                  }
+                  onChange={e => {
+                    const ym = e.target.value;
+                    if (!ym) {
+                      setEndInput('');
+                    } else {
+                      const [yStr, mStr] = ym.split('-');
+                      const y = Number(yStr);
+                      const m = Number(mStr);
+                      const lastDay = new Date(y, m, 0).getDate();
+                      const dStr = String(lastDay).padStart(2, '0');
+                      setEndInput(`${yStr}-${mStr}-${dStr}`);
+                    }
+                  }}
+                  title="Pilih posisi bulan cut-off Kurva S"
+                >
+                  <option value="">Cutoff: Default (Agustus 2026)</option>
+                  <option value="2026-06">Cutoff: Juni 2026</option>
+                  <option value="2026-07">Cutoff: Juli 2026</option>
+                  <option value="2026-09">Cutoff: September 2026</option>
+                  <option value="2026-05">Cutoff: Mei 2026</option>
+                  <option value="2026-04">Cutoff: April 2026</option>
+                  <option value="2026-03">Cutoff: Maret 2026</option>
+                  <option value="2026-02">Cutoff: Februari 2026</option>
+                  <option value="2026-01">Cutoff: Januari 2026</option>
+                  <option value="2025-12">Cutoff: Desember 2025</option>
+                  <option value="2025-06">Cutoff: Juni 2025</option>
+                  <option value="2024-12">Cutoff: Desember 2024</option>
+                </select>
+              </>
+            )}
+
+            {/* Filter spesifik tab Document Tracking (Tab 3) */}
+            {activeTab === 't3' && (
+              <>
+                <select
+                  id="dsS"
+                  aria-label="Sumber"
+                  value={dsS}
+                  onChange={e => setDsS(e.target.value)}
+                >
+                  <option value="">Semua Kontrak</option>
+                  <option value="G">Kontrak On Going</option>
+                  <option value="C">Kontrak Selesai (Close)</option>
+                </select>
+                <select
+                  id="dsP"
+                  aria-label="PIC"
+                  value={dsP}
+                  onChange={e => setDsP(e.target.value)}
+                >
+                  <option value="">Semua PIC</option>
+                  {Array.from(new Set(C.map(c => c.pic)))
+                    .sort()
+                    .map(s => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                </select>
+                <select
+                  id="dsJ"
+                  aria-label="Jenis"
+                  value={dsJ}
+                  onChange={e => setDsJ(e.target.value)}
+                >
+                  <option value="">User + Vendor</option>
+                  <option value="U">User</option>
+                  <option value="V">Vendor</option>
+                </select>
+                <select
+                  id="dsB"
+                  aria-label="Tingkat nilai"
+                  value={dsB}
+                  onChange={e => setDsB(e.target.value)}
+                >
+                  <option value="">Semua Nilai</option>
+                  {BK.map(s => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+          </div>
+        </header>
+
+        {/* PAGE CONTENT */}
+        <main className="page-content">
+          {activeTab === 't1' && (
+            <div className="note">
+              Sistem pemantauan portofolio dan progres pekerjaan Mekanikal &amp; Elektrikal (ME) secara terpadu, menyajikan ringkasan eksekutif status proyek berjalan, analisis realisasi Kurva S terhadap rencana kumulatif, pemetaan mitigasi risiko kritis, serta pelacakan kelengkapan dokumen administrasi kontrak.
+            </div>
+          )}
+
+          {/* TAB 1: RINGKASAN */}
+          {activeTab === 't1' && (
+            <section id="t1">
               <div className="kp" id="hk">
-                <div className="kk">
-                  <span>Project on going</span>
+                <div className="kk" style={{ borderTop: '3px solid #3b82f6' }}>
+                  <div className="kk-top">
+                    <i className="kk-ic"><FolderKanban size={18} /></i>
+                    <span>Project On Going</span>
+                  </div>
                   <b>{homeList.length}</b>
+                  <div className="kk-bar"><i style={{ width: '100%', background: '#3b82f6' }} /></div>
                 </div>
-                <div className="kk">
-                  <span>Total nilai kontrak</span>
+                <div className="kk" style={{ borderTop: '3px solid #10b981' }}>
+                  <div className="kk-top">
+                    <i className="kk-ic" style={{ background: '#d1fae5', color: '#059669' }}><TrendingUp size={18} /></i>
+                    <span>Total Nilai Kontrak</span>
+                  </div>
                   <b>Rp{f1(homeList.reduce((a, x) => a + x.m.nv, 0))} M</b>
+                  <div className="kk-bar"><i style={{ width: '85%', background: '#10b981' }} /></div>
                 </div>
-                <div className="kk">
-                  <span>At risk atau delayed</span>
+                <div className="kk" style={{ borderTop: '3px solid #ef4444' }}>
+                  <div className="kk-top">
+                    <i className="kk-ic bad"><AlertTriangle size={18} /></i>
+                    <span>At Risk Atau Delayed</span>
+                  </div>
                   <b style={{ color: homeList.filter(x => x.m.st !== 'ON TRACK').length > 0 ? '#ef4444' : 'inherit' }}>
                     {homeList.filter(x => x.m.st !== 'ON TRACK').length}
                     {homeList.length
@@ -1243,84 +2781,142 @@ export default function App() {
                         )}%)`
                       : ''}
                   </b>
+                  <div className="kk-bar bad" style={{ background: 'var(--track)' }}>
+                    <i style={{ width: `${homeList.length ? (homeList.filter(x => x.m.st !== 'ON TRACK').length / homeList.length) * 100 : 0}%`, background: '#ef4444' }} />
+                  </div>
                 </div>
-                <div className="kk">
-                  <span>Deviasi kurva S (Agu 2026)</span>
-                  <b style={{ color: dev > 0 ? '#ef4444' : '#10b981' }}>−{f1(dev)}%</b>
+                <div className="kk" style={{ borderTop: '3px solid #6366f1' }}>
+                  <div className="kk-top">
+                    <i className="kk-ic" style={{ background: '#e0e7ff', color: '#4f46e5' }}><Activity size={18} /></i>
+                    <span>
+                      Deviasi Kurva S{' '}
+                      <span style={{ color: '#ef4444', fontWeight: 600 }}>
+                        (per {cutoffMonthLabel}{dateEndBeyondData ? ', data terakhir' : ''})
+                      </span>
+                    </span>
+                  </div>
+                  <b style={{ color: devVal < 0 ? '#ef4444' : '#10b981' }}>
+                    {devVal > 0 ? `+${f1(devVal)}%` : `${f1(devVal)}%`}
+                  </b>
+                  <div className="kk-bar">
+                    <i style={{ width: `${Math.min(100, Math.max(10, Math.abs(devVal) * 5))}%`, background: devVal < 0 ? '#ef4444' : '#10b981' }} />
+                  </div>
                 </div>
               </div>
 
               <div className="g2x">
-                <div className="panel">
-                  <h2>Jumlah Proyek Berdasarkan Status</h2>
-                  <div id="hs">
-                    <ProjectStagePieChart
-                      data={GK.map(([k, l, c]) => ({
-                        key: k,
-                        label: l,
-                        value: M.filter(m => m.g === k).length,
-                        color: c
-                      }))}
-                    />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div className="panel" style={{ marginBottom: 0 }}>
+                    <h2>Jumlah Proyek Berdasarkan Status</h2>
+                    <div id="hs">
+                      <ProjectStagePieChart
+                        data={GK.map(([k, l, c]) => ({
+                          key: k,
+                          label: l,
+                          value: detailList.filter(d => d.m.g === k).length,
+                          color: c
+                        }))}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="panel" style={{ marginBottom: 0 }}>
+                    <h2>Peta Risiko</h2>
+                    <RiskBubbleChart projects={homeList.map(x => x.m)} onSelectProject={openDetailModal} stc={stc} stText={stText} f1={f1} />
                   </div>
                 </div>
 
                 <div className="panel">
-                  <h2>Akhir kontrak project on going</h2>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '14px' }}>
+                    <div>
+                      <h2 style={{ margin: '0 0 2px 0' }}>Akhir Kontrak Project On Going</h2>
+                      <p style={{ fontSize: '11.5px', color: 'var(--mute)', margin: 0, fontWeight: 500 }}>
+                        Berdasarkan batas akhir kontrak terkini terhadap hari ini
+                      </p>
+                    </div>
+                    <span
+                      title="Otomatis mengikuti pergantian hari dan tanggal secara real-time"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        color: 'var(--accent)',
+                        background: 'rgba(37, 99, 235, 0.08)',
+                        border: '1px solid rgba(37, 99, 235, 0.22)',
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: '6px',
+                          height: '6px',
+                          borderRadius: '50%',
+                          background: '#10b981',
+                          boxShadow: '0 0 6px rgba(16, 185, 129, 0.6)',
+                          display: 'inline-block'
+                        }}
+                      />
+                      <span>Hari Ini: <strong>{todayFullLabel}</strong></span>
+                    </span>
+                  </div>
                   <div className="bk" id="hbk">
-                    <div>
-                      Terlewat<b>{homeDeadlineList.filter(y => y.d < 0).length}</b>
+                    <div style={{ borderTop: '3px solid #ef4444' }}>
+                      Terlewat<b style={{ color: '#ef4444' }}>{homeDeadlineList.filter(y => y.d < 0).length}</b>
                     </div>
-                    <div>
-                      0-30 hari<b>{homeDeadlineList.filter(y => y.d >= 0 && y.d <= 30).length}</b>
+                    <div style={{ borderTop: '3px solid #f97316' }}>
+                      0-30 hari<b style={{ color: '#f97316' }}>{homeDeadlineList.filter(y => y.d >= 0 && y.d <= 30).length}</b>
                     </div>
-                    <div>
-                      31-90 hari<b>{homeDeadlineList.filter(y => y.d > 30 && y.d <= 90).length}</b>
+                    <div style={{ borderTop: '3px solid #f59e0b' }}>
+                      31-90 hari<b style={{ color: '#f59e0b' }}>{homeDeadlineList.filter(y => y.d > 30 && y.d <= 90).length}</b>
                     </div>
-                    <div>
-                      &gt; 90 hari<b>{homeDeadlineList.filter(y => y.d > 90).length}</b>
+                    <div style={{ borderTop: '3px solid #64748b' }}>
+                      &gt; 90 hari<b style={{ color: '#64748b' }}>{homeDeadlineList.filter(y => y.d > 90).length}</b>
                     </div>
                   </div>
-                  <div className="scroll">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Project</th>
-                          <th>Akhir kontrak terkini</th>
-                          <th>Sisa hari</th>
-                          <th>Realisasi</th>
-                        </tr>
-                      </thead>
-                      <tbody id="he">
-                        {homeDeadlineList.slice(0, 6).map(y => (
-                          <tr
+
+                  <div style={{ marginTop: '16px' }}>
+                    <div style={{ fontSize: '12px', color: 'var(--mute)', fontWeight: 600, marginBottom: '10px' }}>
+                      3 Project Paling Lewat
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {homeDeadlineList
+                        .filter(y => y.d < 0)
+                        .slice(0, 3)
+                        .map(y => (
+                          <div
                             key={y.x.m.no}
                             tabIndex={0}
-                            onClick={() => {
-                              openDetailModal(y.x.m.no - 1);
+                            onClick={() => openDetailModal(y.x.m.no - 1)}
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              padding: '10px 14px',
+                              background: 'var(--bg-app)',
+                              border: '1px solid var(--line)',
+                              borderRadius: '8px',
+                              cursor: 'pointer',
+                              fontSize: '13px',
+                              transition: 'all 0.15s ease'
                             }}
                           >
-                            <td>{y.x.m.n}</td>
-                            <td>{y.x.m.akt}</td>
-                            <td
-                              style={{
-                                color:
-                                  y.d < 0 ? 'var(--bad)' : y.d <= 30 ? 'var(--risk)' : 'inherit'
-                              }}
-                            >
-                              {y.d < 0 ? `terlewat ${-y.d}` : y.d}
-                            </td>
-                            <td>{y.x.m.rt}</td>
-                          </tr>
+                            <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{y.x.m.n}</span>
+                            <span style={{ color: '#ef4444', fontWeight: 700, whiteSpace: 'nowrap', marginLeft: '12px' }}>
+                              terlewat {-y.d} hari
+                            </span>
+                          </div>
                         ))}
-                      </tbody>
-                    </table>
+                    </div>
                   </div>
                 </div>
               </div>
 
               <div className="panel">
-                <h2>Perlu perhatian: delayed dan at risk</h2>
+                <h2>Perlu Perhatian: Delayed Dan At Risk</h2>
                 <div className="scroll">
                   <table>
                     <thead>
@@ -1330,19 +2926,22 @@ export default function App() {
                         <th>Nilai (Rp M)</th>
                         <th>Deviasi</th>
                         <th>Status</th>
+                        <th>Akhir kontrak terkini</th>
+                        <th>Keterlambatan</th>
                         <th>Situasi</th>
                       </tr>
                     </thead>
                     <tbody id="hp">
                       {homeCriticalList.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="src">
+                          <td colSpan={8} className="src">
                             Tidak ada project untuk filter ini.
                           </td>
                         </tr>
                       ) : (
                         homeCriticalList.map(x => {
                           const dv = (x.m.rl ?? 0) - (x.m.pl ?? 0);
+                          const d = sisa(x.m.akd);
                           return (
                             <tr
                               key={x.m.no}
@@ -1368,6 +2967,35 @@ export default function App() {
                                   {x.m.st}
                                 </span>
                               </td>
+                              <td>{x.m.akt}</td>
+                              <td>
+                                {d === null ? (
+                                  <span style={{ color: 'var(--mute)' }}>-</span>
+                                ) : d < 0 ? (
+                                  <span
+                                    style={{
+                                      color: 'var(--bad)',
+                                      fontWeight: 700,
+                                      background: 'rgba(239, 68, 68, 0.08)',
+                                      padding: '3px 8px',
+                                      borderRadius: '4px',
+                                      display: 'inline-block',
+                                      whiteSpace: 'nowrap'
+                                    }}
+                                  >
+                                    Terlambat {-d} hari
+                                  </span>
+                                ) : (
+                                  <span
+                                    style={{
+                                      color: d <= 30 ? 'var(--risk)' : 'var(--good)',
+                                      fontWeight: 600
+                                    }}
+                                  >
+                                    Sisa {d} hari
+                                  </span>
+                                )}
+                              </td>
                               <td>
                                 {x.m.sit.length > 150 ? x.m.sit.slice(0, 150) + '...' : x.m.sit}
                               </td>
@@ -1386,105 +3014,178 @@ export default function App() {
           {/* TAB 2: DETAIL PROJECT */}
           {activeTab === 't2' && (
             <section id="t2">
-              <div className="filters">
-                <select
-                  id="gs"
-                  aria-label="Kelompok"
-                  value={gs}
-                  onChange={e => setGs(e.target.value)}
-                >
-                  <option value="">Semua kelompok</option>
-                  {GK.map(g => (
-                    <option key={g[0]} value={g[0]}>
-                      {g[1]}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  id="ss"
-                  aria-label="Status"
-                  value={ss}
-                  onChange={e => setSs(e.target.value)}
-                >
-                  <option value="">Semua status</option>
-                  {Array.from(new Set(projects.map(m => m.st))).map(s => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
+              <div className="kp" id="t2k">
+                <div className="kk" style={{ borderTop: '3px solid #3b82f6' }}>
+                  <div className="kk-top">
+                    <i className="kk-ic"><FolderKanban size={18} /></i>
+                    <span>Total Proyek (Filter)</span>
+                  </div>
+                  <b>{detailList.length}</b>
+                  <div className="kk-bar"><i style={{ width: `${projects.length ? (detailList.length / projects.length) * 100 : 100}%`, background: '#3b82f6' }} /></div>
+                </div>
+                <div className="kk" style={{ borderTop: '3px solid #10b981' }}>
+                  <div className="kk-top">
+                    <i className="kk-ic" style={{ background: '#d1fae5', color: '#059669' }}><TrendingUp size={18} /></i>
+                    <span>Nilai Kontrak (Filter)</span>
+                  </div>
+                  <b>Rp{f1(detailList.reduce((a, x) => a + x.m.nv, 0))} M</b>
+                  <div className="kk-bar"><i style={{ width: '85%', background: '#10b981' }} /></div>
+                </div>
+                <div className="kk" style={{ borderTop: '3px solid #06b6d4' }}>
+                  <div className="kk-top">
+                    <i className="kk-ic" style={{ background: '#cffafe', color: '#0891b2' }}><CheckCircle2 size={18} /></i>
+                    <span>Status On Track</span>
+                  </div>
+                  <b>{detailList.filter(x => x.m.st === 'ON TRACK').length}</b>
+                  <div className="kk-bar">
+                    <i style={{ width: `${detailList.length ? (detailList.filter(x => x.m.st === 'ON TRACK').length / detailList.length) * 100 : 0}%`, background: '#06b6d4' }} />
+                  </div>
+                </div>
+                <div className="kk" style={{ borderTop: '3px solid #ef4444' }}>
+                  <div className="kk-top">
+                    <i className="kk-ic bad"><AlertTriangle size={18} /></i>
+                    <span>Delayed / At Risk</span>
+                  </div>
+                  <b style={{ color: detailList.filter(x => x.m.st !== 'ON TRACK').length > 0 ? '#ef4444' : 'inherit' }}>
+                    {detailList.filter(x => x.m.st !== 'ON TRACK').length}
+                  </b>
+                  <div className="kk-bar bad">
+                    <i style={{ width: `${detailList.length ? (detailList.filter(x => x.m.st !== 'ON TRACK').length / detailList.length) * 100 : 0}%`, background: '#ef4444' }} />
+                  </div>
+                </div>
               </div>
 
               <div className="panel">
-                <h2 id="tt">
-                  Daftar project ({detailList.length} dari {projects.length})
-                </h2>
+                <div className="ph">
+                  <h2 id="ttl">
+                    Daftar project ({detailList.length} dari {projects.length})
+                  </h2>
+                  <span
+                    className="plan-legend-badge"
+                    title="Garis penanda tegak pada progress bar menunjukkan target Realisasi (Plan)"
+                  >
+                    <i className="plan-line-marker" />
+                    <span>Garis hitam pada bar = Plan</span>
+                  </span>
+                </div>
                 <div className="scroll">
                   <table>
                     <thead>
                       <tr>
-                        <th>No</th>
+                        <th></th>
                         <th>Project</th>
                         <th>Pemilik</th>
-                        <th>Nilai (Rp M)</th>
-                        <th>Realisasi vs plan</th>
+                        <th>Nilai</th>
+                        <th>Realisasi Vs Plan</th>
                         <th>Deviasi</th>
                         <th>Status</th>
-                        <th style={{ textAlign: 'center' }}>Aksi</th>
+                        <th></th>
                       </tr>
                     </thead>
                     <tbody id="rows">
-                      {detailList.map(({ m, i }) => (
-                        <tr
-                          key={m.no}
-                          aria-selected={selectedIdx === i}
-                        >
-                          <td>{m.no}</td>
-                          <td>{m.n}</td>
-                          <td>{m.pem}</td>
-                          <td>{f1(m.nv)}</td>
-                          <td>
-                            {m.rl != null ? (
-                              <div className="bar">
-                                <i style={{ width: `${Math.min(m.rl, 100)}%`, background: stc(m.st) }} />
-                                {m.pl != null && (
-                                  <u style={{ left: `${Math.min(m.pl, 100)}%` }} />
-                                )}
-                              </div>
-                            ) : (
-                              <span className="src">{m.rt}</span>
-                            )}
-                          </td>
-                          <td style={{ color: m.dv != null && m.dv < -20 ? 'var(--bad)' : 'inherit' }}>
-                            {m.dv == null ? '-' : m.dv === 0 ? '0' : `${f1(m.dv)}%`}
-                          </td>
-                          <td>
-                            <span
-                              className="tag"
-                              style={{
-                                background: stc(m.st),
-                                color: stText(m.st)
-                              }}
-                            >
-                              {m.st}
-                            </span>
-                          </td>
-                          <td style={{ textAlign: 'center' }}>
-                            <button
-                              type="button"
-                              className="btn-detail"
-                              onClick={() => openDetailModal(i)}
-                              aria-label={`Lihat detail ${m.n}`}
-                            >
-                              Detail
-                            </button>
-                          </td>
+                      {detailList.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="empty">Tidak ada project yang cocok dengan filter ini.</td>
                         </tr>
-                      ))}
+                      ) : (
+                        detailList.map(({ m, i }) => {
+                          const c = stc(m.st);
+                          const badge = getOwnerBadge(m.pem);
+                          const gInfo = GK.find(g => g[0] === m.g) || ['ON GOING', m.g, '#10b981'];
+                          const dv = m.dv;
+                          const dvElem = dv == null ? (
+                            <span className="dv nil">–</span>
+                          ) : dv < 0 ? (
+                            <span className="dv neg">▼ {f1(dv)}%</span>
+                          ) : dv > 0 ? (
+                            <span className="dv pos">▲ +{f1(dv)}%</span>
+                          ) : (
+                            <span className="dv nil">0%</span>
+                          );
+
+                          return (
+                            <tr
+                              key={m.no}
+                              className="row"
+                              style={{ '--c': c } as React.CSSProperties}
+                              aria-selected={selectedIdx === i}
+                            >
+                              <td className="no">{m.no}</td>
+                              <td className="nm">
+                                {m.n}
+                                <div className="grp" style={{ '--g': gInfo[2] } as React.CSSProperties}>
+                                  <i></i>
+                                  <span>{gInfo[1]}</span>
+                                </div>
+                              </td>
+                              <td>
+                                <span className="own">
+                                  {m.pem}
+                                </span>
+                              </td>
+                              <td className="val">
+                                {f1(m.nv)}<small>M</small>
+                              </td>
+                              <td>
+                                {m.rl == null ? (
+                                  <span style={{ color: 'var(--mute)' }}>Belum Mulai</span>
+                                ) : (
+                                  <div className="pg">
+                                    <div className="pg-l">
+                                      <b>{f1(m.rl)}%</b>
+                                      <span>{m.pl == null ? '' : `Plan ${f1(m.pl)}%`}</span>
+                                    </div>
+                                    <div className="bar">
+                                      <i style={{ width: `${Math.min(m.rl, 100)}%` }} />
+                                      {m.pl != null && <u style={{ left: `${Math.min(m.pl, 100)}%` }} />}
+                                    </div>
+                                  </div>
+                                )}
+                              </td>
+                              <td>{dvElem}</td>
+                              <td>
+                                <span className="st" style={{ '--c': c } as React.CSSProperties}>
+                                  {m.st}
+                                </span>
+                                {(() => {
+                                  const d = sisa(m.akd);
+                                  const isDone = m.st === 'DONE' || m.st.startsWith('DONE' ) || m.st === 'SELESAI';
+                                  if (!isDone && d !== null && d < 0) {
+                                    return (
+                                      <div
+                                        style={{
+                                          marginTop: '3px',
+                                          fontSize: '11px',
+                                          color: 'var(--bad)',
+                                          fontWeight: 700,
+                                          whiteSpace: 'nowrap'
+                                        }}
+                                        title={`Akhir kontrak terkini: ${m.akt} (dihitung dinamis per hari ini: ${todayDisplayLabel})`}
+                                      >
+                                        Terlambat {-d} hari
+                                      </div>
+                                    );
+                                  }
+                                  return null;
+                                })()}
+                              </td>
+                              <td>
+                                <button
+                                  type="button"
+                                  className="btn"
+                                  onClick={() => openDetailModal(i)}
+                                  aria-label={`Lihat detail ${m.n}`}
+                                >
+                                  Detail
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
                     </tbody>
                   </table>
                 </div>
-                <p className="src">Klik tombol <b>Detail</b> pada baris project untuk membuka Project identity dan Status update. Garis hitam = plan.</p>
               </div>
             </section>
           )}
@@ -1494,32 +3195,14 @@ export default function App() {
             <section id="t4">
               <div className="panel">
                 <h2>Kurva S Agregat &amp; Individual</h2>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                  <label htmlFor="ksel" className="src" style={{ margin: 0 }}>
-                    Tampilkan:{' '}
-                  </label>
-                  <select
-                    id="ksel"
-                    value={kSel}
-                    onChange={e => setKSel(e.target.value)}
-                  >
-                    <option value="p">Seluruh Proyek</option>
-                    {K.names.map((n, i) => (
-                      <option key={i} value={String(i)}>
-                        {n}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
                 <div id="kinfo">
                   {(() => {
                     const isPort = kSel === 'p';
                     const idx = isPort ? 0 : Number(kSel);
                     const tag = isPort ? 'S10' : `S${Number(kSel) + 1}`;
                     const d = isPort ? K.port : K.proj[idx];
-                    const p = d.p[31] ?? 0;
-                    const r = d.r[31] ?? 0;
+                    const p = d.p[cutoffMonthIdx] ?? 0;
+                    const r = d.r[cutoffMonthIdx] ?? 0;
                     const deviasi = Number((r - p).toFixed(1));
                     const totalNilai = K.nil.reduce((a, b) => a + b, 0);
                     const nilai = isPort ? totalNilai : K.nil[idx];
@@ -1527,48 +3210,55 @@ export default function App() {
 
                     return (
                       <>
-                        <div className="kinfo-card">
+                        <div className="kinfo-card" style={{ borderTop: '3px solid #3b82f6' }}>
                           <div className="kinfo-head">
                             <span className="kinfo-title">Bobot Proyek</span>
                             <span className="kinfo-pill">{tag}</span>
                           </div>
                           <div className="kinfo-val">{f1(bobot)}%</div>
-                          <div className="kinfo-desc">dari total Kurva S</div>
+                          <div className="kinfo-desc">Dari Total Kurva S</div>
+                          <div className="kk-bar" style={{ marginTop: 'auto' }}><i style={{ width: `${Math.min(100, bobot)}%`, background: '#3b82f6' }} /></div>
                         </div>
 
-                        <div className="kinfo-card">
+                        <div className="kinfo-card" style={{ borderTop: '3px solid #10b981' }}>
                           <div className="kinfo-head">
                             <span className="kinfo-title">Nilai Pekerjaan</span>
                             <span className="kinfo-pill">{tag}</span>
                           </div>
                           <div className="kinfo-val">Rp{f1(nilai)} M</div>
+                          <div className="kinfo-desc">Total Alokasi Nilai</div>
+                          <div className="kk-bar" style={{ marginTop: 'auto' }}><i style={{ width: '75%', background: '#10b981' }} /></div>
                         </div>
 
-                        <div className="kinfo-card">
+                        <div className="kinfo-card" style={{ borderTop: '3px solid #f59e0b' }}>
                           <div className="kinfo-head">
                             <span className="kinfo-title">Realisasi</span>
                             <span className="kinfo-pill">{tag}</span>
                           </div>
                           <div className="kinfo-val">{f1(r)}%</div>
-                          <div className="kinfo-desc">rencana {f1(p)}%</div>
+                          <div className="kinfo-desc">Rencana {f1(p)}% (Per {cutoffMonthLabel})</div>
+                          <div className="kk-bar" style={{ marginTop: 'auto' }}><i style={{ width: `${Math.min(100, r)}%`, background: '#f59e0b' }} /></div>
                         </div>
 
-                        <div className="kinfo-card">
+                        <div className="kinfo-card" style={{ borderTop: '3px solid #8b5cf6' }}>
                           <div className="kinfo-head">
                             <span className="kinfo-title">Deviasi</span>
                             <span className="kinfo-pill">{tag}</span>
                           </div>
-                          <div className="kinfo-val">
-                            {deviasi > 0 ? `+${f1(deviasi)}` : f1(deviasi)} pp
+                          <div className="kinfo-val" style={{ color: deviasi < -3 ? '#ef4444' : deviasi < 0 ? '#f59e0b' : '#10b981' }}>
+                            {deviasi > 0 ? `+${f1(deviasi)}%` : `${f1(deviasi)}%`}
                           </div>
                           <div
                             className="kinfo-desc"
                             style={{
-                              color: deviasi < -3 ? '#ef4444' : deviasi < 0 ? '#f59e0b' : '#22c55e',
+                              color: deviasi < -3 ? '#ef4444' : deviasi < 0 ? '#f59e0b' : '#10b981',
                               fontWeight: 600
                             }}
                           >
-                            per Agu 2026
+                            Per {cutoffMonthLabel}
+                          </div>
+                          <div className="kk-bar" style={{ marginTop: 'auto' }}>
+                            <i style={{ width: `${Math.min(100, Math.max(15, Math.abs(deviasi) * 5))}%`, background: deviasi < 0 ? '#ef4444' : '#10b981' }} />
                           </div>
                         </div>
                       </>
@@ -1581,15 +3271,15 @@ export default function App() {
               </div>
 
               <div className="panel">
-                <h2>Cek sinkron: progres Master vs kurva S</h2>
+                <h2>Cek Sinkron: Progres Master Vs Kurva S (Posisi {cutoffMonthLabel})</h2>
                 <div className="scroll">
                   <table>
                     <thead>
                       <tr>
                         <th>Project</th>
                         <th>Realisasi Master</th>
-                        <th>Realisasi kurva S</th>
-                        <th>Selisih (poin)</th>
+                        <th>Realisasi Kurva S ({cutoffMonthLabel})</th>
+                        <th>Selisih (%)</th>
                       </tr>
                     </thead>
                     <tbody id="kcmp">
@@ -1597,7 +3287,7 @@ export default function App() {
                         const idxA = Number(a);
                         const idxK = Number(k);
                         const m = P[idxA]?.rl ?? 0;
-                        const c = K.proj[idxK].r[31] ?? 0;
+                        const c = K.proj[idxK].r[cutoffMonthIdx] ?? 0;
                         const diff = Number((c - m).toFixed(1));
 
                         return (
@@ -1606,7 +3296,7 @@ export default function App() {
                             <td>{f1(m)}%</td>
                             <td>{f1(c)}%</td>
                             <td style={{ color: Math.abs(diff) > 3 ? 'var(--bad)' : 'inherit', fontWeight: '700' }}>
-                              {f1(diff)}
+                              {diff > 0 ? `+${f1(diff)}%` : `${f1(diff)}%`}
                             </td>
                           </tr>
                         );
@@ -1614,9 +3304,6 @@ export default function App() {
                     </tbody>
                   </table>
                 </div>
-                <p className="src">
-                  Selisih lebih dari 3 poin ditandai merah. Perlu dikonfirmasi: sumber mana yang dipakai, atau apakah cut-off tanggalnya berbeda.
-                </p>
               </div>
             </section>
           )}
@@ -1624,192 +3311,250 @@ export default function App() {
           {/* TAB 3: KELENGKAPAN DOKUMEN */}
           {activeTab === 't3' && (
             <section id="t3">
-              <div className="filters">
-                <select
-                  id="dsS"
-                  aria-label="Sumber"
-                  value={dsS}
-                  onChange={e => setDsS(e.target.value)}
-                >
-                  <option value="G">Kontrak on going</option>
-                  <option value="C">Kontrak selesai (close)</option>
-                  <option value="">Semua kontrak</option>
-                </select>
-                <select
-                  id="dsP"
-                  aria-label="PIC"
-                  value={dsP}
-                  onChange={e => setDsP(e.target.value)}
-                >
-                  <option value="">Semua PIC</option>
-                  {Array.from(new Set(C.map(c => c.pic)))
-                    .sort()
-                    .map(s => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                </select>
-                <select
-                  id="dsJ"
-                  aria-label="Jenis"
-                  value={dsJ}
-                  onChange={e => setDsJ(e.target.value)}
-                >
-                  <option value="">User + vendor</option>
-                  <option value="U">User</option>
-                  <option value="V">Vendor</option>
-                </select>
-                <select
-                  id="dsB"
-                  aria-label="Tingkat nilai"
-                  value={dsB}
-                  onChange={e => setDsB(e.target.value)}
-                >
-                  <option value="">Semua nilai</option>
-                  {BK.map(s => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </div>
 
-              <div className="kp" id="dk">
-                <div className="kk">
-                  <span>Total kontrak (user + vendor)</span>
-                  <b>{docStats.total}</b>
-                </div>
-                <div className="kk">
-                  <span>Rata-rata kelengkapan dokumen</span>
-                  <b>{docStats.completeness}%</b>
-                </div>
-                <div className="kk">
-                  <span>Dokumen belum ada / hilang</span>
-                  <b style={{ color: docStats.missing > 0 ? 'var(--bad)' : 'inherit' }}>{docStats.missing}</b>
-                </div>
-                <div className="kk">
-                  <span>Kontrak progres &lt; 100%</span>
-                  <b>{docStats.under100}</b>
-                </div>
-              </div>
+                        {/* ===== KPI (gaya kartu seperti tab Kurva S) ===== */}
+              <div className="t3-kpis" id="dk">
+                {(() => {
+                  const scope = dsS === 'G' ? 'On Going' : dsS === 'C' ? 'Close' : 'Semua';
+                  const jenis = dsJ === 'U' ? 'User' : dsJ === 'V' ? 'Vendor' : 'User + Vendor';
+                  const pctUnder = docStats.total ? Math.round((docStats.under100 / docStats.total) * 100) : 0;
+                  const totalCells = docFiltered.length * 20;
+                  const pctMissing = totalCells ? Math.min(100, Math.round((docStats.missing / totalCells) * 100)) : 0;
 
-              <div className="g2h">
-                <div className="panel">
-                  <h2>Heatmap kelengkapan dokumen (kontrak × 20 dokumen)</h2>
-                  <div className="hm" id="hm">
-                    <div className="hrow hmh">
-                      <span />
-                      {DN.map(d => (
-                        <span key={d} className="vh">
-                          {d}
-                        </span>
-                      ))}
-                      <span />
-                    </div>
-                    {docFiltered.map((c, i) => {
-                      const arr = Array.from(c.d);
-                      const aCount = arr.filter(x => x === 'A').length;
-                      const bCount = arr.filter(x => 'KHP'.includes(x)).length;
-                      const pct = aCount + bCount ? Math.round((aCount / (aCount + bCount)) * 100) : null;
-
-                      return (
-                        <div className="hrow" key={i}>
-                          <span className="n" title={`${c.n} | PIC ${c.pic} | ${c.w}`}>
-                            <em>{c.j === 'V' ? 'V' : 'U'}</em>
-                            {c.n}
-                          </span>
-                          {arr.map((x, j) => (
-                            <i
-                              key={j}
-                              className={`c ${CL[x] || ''}`}
-                              title={DN[j]}
-                            />
-                          ))}
-                          <b>{pct !== null ? `${pct}%` : '-'}</b>
+                  return (
+                    <>
+                      <div className="kinfo-card" style={{ borderTop: '3px solid #3b82f6' }}>
+                        <div className="kinfo-head">
+                          <span className="kinfo-title">Total Kontrak</span>
+                          <span className="kinfo-pill">{scope}</span>
                         </div>
+                        <div className="kinfo-val">{docStats.total}</div>
+                        <div className="kinfo-desc">{jenis}</div>
+                        <div className="kk-bar" style={{ marginTop: 'auto' }}><i style={{ width: '100%', background: '#3b82f6' }} /></div>
+                      </div>
+
+                      <div className="kinfo-card" style={{ borderTop: '3px solid #10b981' }}>
+                        <div className="kinfo-head">
+                          <span className="kinfo-title">Rata-Rata Kelengkapan</span>
+                          <span className="kinfo-pill">{scope}</span>
+                        </div>
+                        <div className="kinfo-val">{docStats.completeness}%</div>
+                        <div className="kinfo-desc">Dari Seluruh Kontrak</div>
+                        <div className="kk-bar" style={{ marginTop: 'auto' }}><i style={{ width: `${docStats.completeness}%`, background: '#10b981' }} /></div>
+                      </div>
+
+                      <div className="kinfo-card" style={{ borderTop: '3px solid #ef4444' }}>
+                        <div className="kinfo-head">
+                          <span className="kinfo-title">Belum Ada / Hilang</span>
+                          <span className="kinfo-pill">{scope}</span>
+                        </div>
+                        <div className="kinfo-val" style={{ color: docStats.missing > 0 ? '#ef4444' : undefined }}>{docStats.missing}</div>
+                        <div className="kinfo-desc" style={{ color: docStats.missing > 0 ? '#ef4444' : undefined, fontWeight: 600 }}>
+                          {docStats.missing > 0 ? 'Dokumen Perlu Ditindaklanjuti' : 'Semua Dokumen Lengkap'}
+                        </div>
+                        <div className="kk-bar" style={{ marginTop: 'auto' }}><i style={{ width: `${pctMissing}%`, background: '#ef4444' }} /></div>
+                      </div>
+
+                      <div className="kinfo-card" style={{ borderTop: '3px solid #f59e0b' }}>
+                        <div className="kinfo-head">
+                          <span className="kinfo-title">Kontrak Progres &lt; 100%</span>
+                          <span className="kinfo-pill">{scope}</span>
+                        </div>
+                        <div className="kinfo-val">{docStats.under100}</div>
+                        <div className="kinfo-desc">Dari {docStats.total} Kontrak</div>
+                        <div className="kk-bar" style={{ marginTop: 'auto' }}><i style={{ width: `${pctUnder}%`, background: '#f59e0b' }} /></div>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* ===== HEATMAP ===== */}
+              <div className="panel" style={{ marginBottom: '16px' }}>
+                <div className="t3-ph">
+                  <div>
+                    <h2>Heatmap Kelengkapan Dokumen</h2>
+                    <div className="t3-sub">Kontrak × 20 Dokumen</div>
+                  </div>
+                  <div className="t3-legend">
+                    <span><i style={{ background: 'var(--ok)' }} />Ada</span>
+                    <span><i style={{ background: '#BFC6C4' }} />Tidak Diperlukan</span>
+                    <span><i style={{ background: 'var(--bad)' }} />Belum Ada / Hilang</span>
+                    <span><i style={{ background: 'var(--risk)' }} />Proses / Pekerjaan Berjalan</span>
+                    <span><i style={{ background: 'var(--accent-blue)' }} />Divisi Lain</span>
+                  </div>
+                </div>
+
+                <div className="hm" id="hm">
+                  <div className="hrow hmh">
+                    <span />
+                    {DN.map(d => (
+                      <span key={d} className="vh">
+                        {d}
+                      </span>
+                    ))}
+                    <span className="t3-hm-end">Selesai</span>
+                  </div>
+                  {docFiltered.map((c, i) => {
+                    const arr = Array.from(c.d);
+                    const aCount = arr.filter(x => x === 'A').length;
+                    const bCount = arr.filter(x => 'KHP'.includes(x)).length;
+                    const pct = aCount + bCount ? Math.round((aCount / (aCount + bCount)) * 100) : null;
+
+                    return (
+                      <div className="hrow" key={i}>
+                        <span className="n" title={`${c.n} | PIC ${c.pic} | ${c.w}`}>
+                          <em className={c.j === 'V' ? 'v' : ''}>{c.j === 'V' ? 'V' : 'U'}</em>
+                          {c.n}
+                        </span>
+                        {arr.map((x, j) => (
+                          <i
+                            key={j}
+                            className={`c ${CL[x] || ''}`}
+                            title={DN[j]}
+                          />
+                        ))}
+                        <b
+                          style={{
+                            color:
+                              pct === null
+                                ? 'var(--t3-mute)'
+                                : pct >= 75
+                                ? 'var(--t3-ok)'
+                                : pct < 50
+                                ? 'var(--t3-bad)'
+                                : 'var(--t3-ink)'
+                          }}
+                        >
+                          {pct !== null ? `${pct}%` : '-'}
+                        </b>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="t3-foot">
+                  <span>Arahkan kursor ke sel atau nama untuk detail</span>
+                </div>
+              </div>
+
+              {/* ===== 2 PANEL GRAFIK: Beban per PIC & Sebaran nilai kontrak ===== */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(min(440px, 100%), 1fr))',
+                  gap: '16px',
+                  marginBottom: '16px',
+                  alignItems: 'stretch'
+                }}
+              >
+                <div className="panel" style={{ marginBottom: 0, display: 'flex', flexDirection: 'column' }}>
+                  <div className="t3-ph" style={{ alignItems: 'center', marginBottom: '12px' }}>
+                    <h2>Beban Per PIC</h2>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      {dsP && (
+                        <button className="tg" onClick={() => setDsP('')} style={{ fontSize: '11px', padding: '2px 8px' }}>
+                          Reset PIC ({dsP}) ✕
+                        </button>
+                      )}
+                      <span className="t3-pill">{picStats.length} PIC · Jumlah Kontrak</span>
+                    </div>
+                  </div>
+                  <div id="dpic" style={{ flex: 1 }}>
+                    <PicBarChart data={picStats} selectedPic={dsP} onSelectPic={pic => setDsP(pic)} />
+                  </div>
+                  <div className="t3-foot">
+                    <span>
+                      Beban tertinggi: <b>{picStats[0] ? picStats[0][0] : '-'}</b>
+                      {picStats[0] && docFiltered.length > 0
+                        ? ` · ${picStats[0][1]} kontrak (${((picStats[0][1] / docFiltered.length) * 100).toFixed(1)}%)`
+                        : ''}
+                    </span>
+                    <span>Klik bar untuk filter PIC</span>
+                  </div>
+                </div>
+
+                <div className="panel" style={{ marginBottom: 0, display: 'flex', flexDirection: 'column' }}>
+                  <div className="t3-ph" style={{ alignItems: 'center', marginBottom: '12px' }}>
+                    <h2>Sebaran Nilai Kontrak</h2>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      {dsB && (
+                        <button className="tg" onClick={() => setDsB('')} style={{ fontSize: '11px', padding: '4px 10px' }}>
+                          Reset Filter Nilai ({dsB}) ✕
+                        </button>
+                      )}
+                      <span className="t3-pill purple">{docFiltered.length} kontrak · frekuensi</span>
+                    </div>
+                  </div>
+                  <div id="dnil" style={{ flex: 1 }}>
+                    <StatisticalBucketChart
+                      data={bucketStats}
+                      selectedBucket={dsB}
+                      onSelectBucket={bucket => setDsB(bucket)}
+                      totalFilteredContracts={docFiltered.length}
+                    />
+                  </div>
+                  <div className="t3-foot">
+                    {(() => {
+                      const top = bucketStats.reduce((a, b) => (b[1] > a[1] ? b : a), bucketStats[0]);
+                      return (
+                        <span>
+                          Terbanyak: <b>{top[0]}</b> · {top[1]} kontrak
+                          {docFiltered.length > 0 ? ` (${((top[1] / docFiltered.length) * 100).toFixed(1)}%)` : ''}
+                        </span>
                       );
-                    })}
-                  </div>
-
-                  <div className="legend" style={{ marginTop: '10px' }}>
-                    <span>
-                      <i className="dot" style={{ background: 'var(--ok)' }} />
-                      Ada
-                    </span>
-                    <span>
-                      <i className="dot" style={{ background: 'var(--line)' }} />
-                      Tidak diperlukan
-                    </span>
-                    <span>
-                      <i className="dot" style={{ background: 'var(--bad)' }} />
-                      Belum ada / hilang
-                    </span>
-                    <span>
-                      <i className="dot" style={{ background: 'var(--risk)' }} />
-                      Proses / pekerjaan berjalan
-                    </span>
-                    <span>
-                      <i className="dot" style={{ background: 'var(--accent)' }} />
-                      Divisi lain
-                    </span>
-                  </div>
-                  <p className="src" id="hmn">
-                    {docFiltered.length} kontrak. Kelengkapan = ada ÷ (ada + belum ada + hilang + proses). V = vendor, U = user. Arahkan kursor ke sel atau nama untuk detail.
-                  </p>
-                </div>
-
-                <div className="panel">
-                  <h2>Beban per PIC (jumlah kontrak)</h2>
-                  <div id="dpic">
-                    <PicHorizontalBarChart data={picStats} />
+                    })()}
+                    <span>Klik bar untuk filter nilai</span>
                   </div>
                 </div>
               </div>
 
-              <div className="g2x">
-                <div className="panel">
-                  <h2>Sebaran tingkat nilai kontrak</h2>
-                  <div id="dnil">
-                    {renderHorizontalBars(bucketStats, v => v)}
+              {/* Timeline Akhir Kontrak (Titik per Project terhadap Garis "Hari Ini") - Muncul jika filter kontrak dipilih yang on going */}
+              {dsS === 'G' && (
+                <div className="panel" style={{ marginTop: '18px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                    <div>
+                      <h2>Timeline Akhir Kontrak (Titik Per Project Terhadap Garis “Hari Ini”)</h2>
+                      <p style={{ margin: '2px 0 0', fontSize: '11.5px', color: 'var(--mute)' }}>
+                        Menampilkan project on going terhadap batas waktu hari ini ({todayDisplayLabel}). Titik merah = lewat batas waktu, kuning = mendekati (&lt; 60 hari), hijau = aman.
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <span
+                        className="tag"
+                        style={{
+                          background: 'rgba(37, 99, 235, 0.08)',
+                          color: 'var(--accent)',
+                          fontWeight: 700,
+                          fontSize: '11px',
+                          padding: '4px 8px',
+                          borderRadius: '6px'
+                        }}
+                      >
+                        Hari Ini: {todayDisplayLabel}
+                      </span>
+                      <span
+                        className="tag"
+                        style={{
+                          background: 'rgba(16, 185, 129, 0.15)',
+                          color: '#10b981',
+                          border: '1px solid rgba(16, 185, 129, 0.3)',
+                          fontWeight: 700,
+                          padding: '4px 10px',
+                          fontSize: '11px',
+                          borderRadius: '6px'
+                        }}
+                      >
+                        Filter Aktif: Kontrak On Going ({contractDeadlineItems.length} Proyek)
+                      </span>
+                    </div>
                   </div>
+                  <TimelineContractDeadlines
+                    items={contractDeadlineItems}
+                    todayStr={todayIso}
+                  />
                 </div>
-
-                <div className="panel">
-                  <h2>Kontrak berjalan: tanggal mulai sampai selesai</h2>
-                  <div className="hm" id="dtl" style={{ maxHeight: '300px' }}>
-                    {timelineRange &&
-                      timelineContracts.map((c, idx) => {
-                        const l = ((new Date(c.a!).getTime() - timelineRange.t0) / timelineRange.sp) * 100;
-                        const w = Math.max(
-                          ((new Date(c.e!).getTime() - new Date(c.a!).getTime()) / timelineRange.sp) * 100,
-                          1
-                        );
-                        return (
-                          <div className="tl" key={idx}>
-                            <span className="hl" title={c.n}>
-                              {c.n}
-                            </span>
-                            <div className="tt">
-                              <i
-                                style={{
-                                  left: `${l}%`,
-                                  width: `${w}%`,
-                                  background: c.p >= 100 ? 'var(--ok)' : 'var(--accent)'
-                                }}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
-                  </div>
-                  <p className="src" id="dtn">
-                    {timelineRange
-                      ? `${timelineRange.label}. Hijau = progres 100%. Hanya kontrak dengan tanggal mulai dan selesai terisi (${timelineContracts.length} dari ${docFiltered.length}, maksimal 60 ditampilkan).`
-                      : 'Belum ada kontrak dengan tanggal mulai dan selesai terisi untuk filter ini.'}
-                  </p>
-                </div>
-              </div>
+              )}
             </section>
           )}
 
@@ -1901,7 +3646,75 @@ export default function App() {
                         {projects[selectedIdx].st}
                       </span>
                     </div>
-                    <span className="modal-kpi-sub">Kondisi Terkini</span>
+                    {(() => {
+                      const p = projects[selectedIdx];
+                      const isDone = p.st === 'DONE' || p.st.startsWith('DONE') || p.st === 'SELESAI';
+                      if (!isDone) return <span className="modal-kpi-sub">Kondisi Terkini</span>;
+                      const rawD = sisa(p.akd);
+                      const isDelayed = rawD !== null && rawD < 0;
+                      const isOnTrack = p.st.includes('ON TRACK') || (!isDelayed && rawD !== null && rawD >= 0);
+                      if (isDelayed) return <span className="modal-kpi-sub" style={{ color: '#f97316', fontWeight: 700 }}>Done (Delayed)</span>;
+                      if (isOnTrack) return <span className="modal-kpi-sub" style={{ color: '#10b981', fontWeight: 700 }}>Done (On Track)</span>;
+                      return <span className="modal-kpi-sub" style={{ color: '#2563eb', fontWeight: 700 }}>Done (Standard)</span>;
+                    })()}
+                  </div>
+
+                  <div
+                    className="modal-kpi-card"
+                    style={{
+                      borderColor:
+                        ! (projects[selectedIdx].st === 'DONE' || projects[selectedIdx].st.startsWith('DONE') || projects[selectedIdx].st === 'SELESAI') &&
+                        sisa(projects[selectedIdx].akd) !== null && sisa(projects[selectedIdx].akd)! < 0
+                          ? '#f87171'
+                          : undefined,
+                      background:
+                        ! (projects[selectedIdx].st === 'DONE' || projects[selectedIdx].st.startsWith('DONE') || projects[selectedIdx].st === 'SELESAI') &&
+                        sisa(projects[selectedIdx].akd) !== null && sisa(projects[selectedIdx].akd)! < 0
+                          ? 'rgba(239, 68, 68, 0.05)'
+                          : undefined
+                    }}
+                  >
+                    <span className="modal-kpi-label">Akhir Kontrak Terkini</span>
+                    <b
+                      className="modal-kpi-val"
+                      style={{
+                        fontSize: '13px',
+                        color:
+                          ! (projects[selectedIdx].st === 'DONE' || projects[selectedIdx].st.startsWith('DONE') || projects[selectedIdx].st === 'SELESAI') &&
+                          sisa(projects[selectedIdx].akd) !== null && sisa(projects[selectedIdx].akd)! < 0
+                            ? '#ef4444'
+                            : 'inherit'
+                      }}
+                    >
+                      {projects[selectedIdx].akt}
+                    </b>
+                    <span className="modal-kpi-sub">
+                      {(() => {
+                        const rawD = sisa(projects[selectedIdx].akd);
+                        const isDone = projects[selectedIdx].st === 'DONE' || projects[selectedIdx].st.startsWith('DONE') || projects[selectedIdx].st === 'SELESAI';
+                        const d = isDone && rawD !== null && rawD < 0 ? 0 : rawD;
+                        if (d === null) return '-';
+                        if (d < 0) {
+                          return (
+                            <span style={{ color: '#ef4444', fontWeight: 800 }}>
+                              ⚠️ Terlambat {-d} hari
+                            </span>
+                          );
+                        }
+                        if (d <= 30) {
+                          return (
+                            <span style={{ color: '#f59e0b', fontWeight: 700 }}>
+                              Sisa {d} hari
+                            </span>
+                          );
+                        }
+                        return (
+                          <span style={{ color: '#10b981', fontWeight: 600 }}>
+                            Sisa {d} hari
+                          </span>
+                        );
+                      })()}
+                    </span>
                   </div>
                 </div>
 
@@ -1914,6 +3727,12 @@ export default function App() {
                         <span>{projects[selectedIdx].n}</span>
                       </div>
                       <div className="kv">
+                        <b>PIC Proyek</b>
+                        <span style={{ fontWeight: 700, color: 'var(--ink)' }}>
+                          {projects[selectedIdx].pic || getProjectPic(projects[selectedIdx].no)}
+                        </span>
+                      </div>
+                      <div className="kv">
                         <b>Pemilik</b>
                         <span>{projects[selectedIdx].pem}</span>
                       </div>
@@ -1922,15 +3741,55 @@ export default function App() {
                         <span>{projects[selectedIdx].bamk}</span>
                       </div>
                       <div className="kv">
-                        <b>Akhir kontrak</b>
+                        <b>Akhir kontrak (awal)</b>
                         <span>{projects[selectedIdx].ak}</span>
                       </div>
-                      {projects[selectedIdx].akt !== projects[selectedIdx].ak && (
-                        <div className="kv">
-                          <b>Akhir kontrak terkini</b>
-                          <span>{projects[selectedIdx].akt}</span>
-                        </div>
-                      )}
+                      <div className="kv">
+                        <b>Akhir kontrak terkini</b>
+                        <span style={{ fontWeight: 700, color: 'var(--ink)' }}>
+                          {projects[selectedIdx].akt}
+                        </span>
+                      </div>
+                      {/* Status keterlambatan / sisa hari terhadap akhir kontrak terkini */}
+                      {(() => {
+                        const rawD = sisa(projects[selectedIdx].akd);
+                        const isDone = projects[selectedIdx].st === 'DONE' || projects[selectedIdx].st.startsWith('DONE') || projects[selectedIdx].st === 'SELESAI';
+                        const d = isDone && rawD !== null && rawD < 0 ? 0 : rawD;
+                        if (d === null) return null;
+                        if (d < 0) {
+                          return (
+                            <div
+                              className="kv"
+                              style={{
+                                background: '#fef2f2',
+                                padding: '8px 10px',
+                                borderRadius: '6px',
+                                border: '1px solid #fecaca'
+                              }}
+                            >
+                              <b style={{ color: '#b91c1c', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span>⚠️</span> Keterlambatan kontrak
+                              </b>
+                              <span style={{ color: '#b91c1c', fontWeight: 800 }}>
+                                Terlambat {-d} hari dari tanggal akhir kontrak terkini ({projects[selectedIdx].akt})
+                              </span>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div className="kv">
+                            <b>Sisa waktu kontrak</b>
+                            <span
+                              style={{
+                                color: d <= 30 ? 'var(--risk)' : 'var(--good)',
+                                fontWeight: 700
+                              }}
+                            >
+                              {d} hari lagi
+                            </span>
+                          </div>
+                        );
+                      })()}
                       {projects[selectedIdx].ket !== '-' && (
                         <div className="kv">
                           <b>Keterangan</b>
@@ -1944,6 +3803,34 @@ export default function App() {
                     <div className="status-update-header">
                       <h2>Status update</h2>
                       <div className="status-update-actions">
+                        {projectUpdates[projects[selectedIdx].no] && (
+                          <button
+                            type="button"
+                            className="btn-history-delete"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const p = projects[selectedIdx];
+                              const currentList = statusHistory[p.no] || currentHistory;
+                              const nonBaseline = currentList.filter(item => !item.id.startsWith('baseline-'));
+                              if (nonBaseline.length > 0) {
+                                handleDeleteHistory(nonBaseline[0].id);
+                              } else {
+                                setProjectUpdates(prev => {
+                                  const copy = { ...prev };
+                                  delete copy[p.no];
+                                  return copy;
+                                });
+                                setStatusToast('Status proyek berhasil dikembalikan ke baseline awal.');
+                                setTimeout(() => setStatusToast(null), 3000);
+                              }
+                            }}
+                            title="Kembalikan ke status baseline awal"
+                            style={{ fontSize: '11px', padding: '3px 8px' }}
+                          >
+                            <Trash2 size={12} />
+                            <span>Reset</span>
+                          </button>
+                        )}
                         <button
                           type="button"
                           className={`btn-update-tab ${statusViewMode === 'history' ? 'active' : ''}`}
@@ -2094,7 +3981,7 @@ export default function App() {
                                 className={`status-history-card ${isCurrentActive ? 'is-active-entry' : ''}`}
                               >
                                 <div className="status-history-top">
-                                  <div className="status-history-meta">
+                                  <div className="status-history-meta" style={{ flexWrap: 'wrap', gap: '6px' }}>
                                     <span
                                       className="tag"
                                       style={{
@@ -2109,6 +3996,23 @@ export default function App() {
                                     <span className="status-history-time">
                                       <Clock size={11} />
                                       {entry.timestamp}
+                                    </span>
+                                    <span
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                        fontSize: '11px',
+                                        color: 'var(--ink)',
+                                        fontWeight: 600,
+                                        background: 'var(--card)',
+                                        border: '1px solid var(--line)',
+                                        padding: '1px 7px',
+                                        borderRadius: '4px'
+                                      }}
+                                    >
+                                      <User size={11} style={{ color: 'var(--accent-blue)' }} />
+                                      <span>Diperbarui oleh: <b>{entry.author && !/sistem|bima|user|tim\s*proyek/i.test(entry.author) ? entry.author : (projects[selectedIdx].pic || getProjectPic(projects[selectedIdx].no))}</b></span>
                                     </span>
                                   </div>
                                   {isCurrentActive && (
@@ -2147,12 +4051,15 @@ export default function App() {
                                       <span>Terapkan Status Ini</span>
                                     </button>
                                   )}
-                                  {currentHistory.length > 1 && (
+                                  {(!entry.id.startsWith('baseline-') || currentHistory.length > 1) && (
                                     <button
                                       type="button"
                                       className="btn-history-delete"
-                                      onClick={() => handleDeleteHistory(entry.id)}
-                                      title="Hapus catatan ini dari riwayat"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDeleteHistory(entry.id);
+                                      }}
+                                      title="Hapus catatan status ini dari riwayat"
                                     >
                                       <Trash2 size={11} />
                                       <span>Hapus</span>
@@ -2165,33 +4072,6 @@ export default function App() {
                         </div>
                       ) : (
                         <div className="tb">
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                            <div className="status-badge-timestamp" style={{ margin: 0 }}>
-                              <Clock size={12} />
-                              <span>
-                                {projectUpdates[projects[selectedIdx].no]?.lastUpdated
-                                  ? `Update terakhir: ${projectUpdates[projects[selectedIdx].no]?.lastUpdated}`
-                                  : 'Update terkini (Data Master)'}
-                              </span>
-                            </div>
-                            <button
-                              type="button"
-                              className="btn-update-tab"
-                              onClick={() => {
-                                setEditSt(projects[selectedIdx].st);
-                                setEditSit(projects[selectedIdx].sit);
-                                setEditMit(projects[selectedIdx].mit);
-                                setEditLs(projects[selectedIdx].ls);
-                                setEditNote('');
-                                setStatusViewMode('edit');
-                              }}
-                              style={{ fontSize: '11px', padding: '3px 8px' }}
-                            >
-                              <Edit3 size={11} />
-                              <span>Ubah Status</span>
-                            </button>
-                          </div>
-
                           <h3>Situasi proyek</h3>
                           <p>{projects[selectedIdx].sit}</p>
                           <h3>Mitigasi</h3>

@@ -101,7 +101,7 @@ export const SCurveTab: React.FC<SCurveTabProps> = ({ masterProjects }) => {
         <KpiCard
           title="Deviasi per Agu 2026"
           sourceId="S10"
-          value={`${deviation > 0 ? '+' : ''}${deviation.toFixed(1)} pp`}
+          value={`${deviation > 0 ? '+' : ''}${deviation.toFixed(1)}%`}
           subtitle={deviation < 0 ? 'Tertinggal dari target rencana' : 'Sesuai atau melampaui rencana'}
           isNegative={deviation < 0}
           isPositive={deviation >= 0}
@@ -303,7 +303,7 @@ export const SCurveTab: React.FC<SCurveTabProps> = ({ masterProjects }) => {
                             fill={isPositive ? '#2e9e5b' : '#d9534f'}
                             rx="1"
                           >
-                            <title>{`${MONTH_NAMES[i % 12]} 20${24 + Math.floor(i / 12)}: ${val > 0 ? '+' : ''}${val.toFixed(1)} pp`}</title>
+                            <title>{`${MONTH_NAMES[i % 12]} 20${24 + Math.floor(i / 12)}: ${val > 0 ? '+' : ''}${val.toFixed(1)}%`}</title>
                           </rect>
                         );
                       })}
@@ -319,7 +319,7 @@ export const SCurveTab: React.FC<SCurveTabProps> = ({ masterProjects }) => {
                 })()}
               </div>
               <div className="text-[10.5px] text-slate-500 mt-2 text-center">
-                Maksimum rentang deviasi proyek ini: ±{maxAbsDev} pp
+                Maksimum rentang deviasi proyek ini: ±{maxAbsDev}%
               </div>
             </div>
           </Card>
@@ -342,7 +342,7 @@ export const SCurveTab: React.FC<SCurveTabProps> = ({ masterProjects }) => {
                 <th className="py-2.5 px-2 text-right">Nilai (Rp M)</th>
                 <th className="py-2.5 px-2 text-right">Rencana</th>
                 <th className="py-2.5 px-2 text-right">Realisasi</th>
-                <th className="py-2.5 px-2 text-right">Deviasi (pp)</th>
+                <th className="py-2.5 px-2 text-right">Deviasi (%)</th>
                 <th className="py-2.5 px-3">Kontribusi ke Realisasi Agregat</th>
               </tr>
             </thead>
@@ -381,7 +381,7 @@ export const SCurveTab: React.FC<SCurveTabProps> = ({ masterProjects }) => {
                       {real.toFixed(1)}%
                     </td>
                     <td className={`py-2.5 px-2 text-right font-bold ${dev < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                      {dev > 0 ? '+' : ''}{dev.toFixed(1)}
+                      {dev > 0 ? '+' : ''}{dev.toFixed(1)}%
                     </td>
                     <td className="py-2.5 px-3 font-sans">
                       <div className="flex items-center gap-2">
@@ -392,7 +392,7 @@ export const SCurveTab: React.FC<SCurveTabProps> = ({ masterProjects }) => {
                           />
                         </div>
                         <span className="font-mono text-[11px] text-slate-700 dark:text-slate-300">
-                          {contributionPp} pp
+                          {contributionPp}%
                         </span>
                       </div>
                     </td>
