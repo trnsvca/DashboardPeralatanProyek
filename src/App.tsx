@@ -1,3 +1,12 @@
+import {
+  initAuth,
+  googleSignIn,
+  googleSignOut,
+  getAccessToken,
+  getCurrentUser
+} from './services/sheetsService';
+import type { User as FirebaseUser } from 'firebase/auth';
+import { saveStatusUpdate } from './api';
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   K,
@@ -44,13 +53,15 @@ import {
   CheckCircle2,
   Activity
 } from 'lucide-react';
+import { PeriodFilter } from './components/PeriodFilter';
+  import { normalizeStatus } from './utils/helpers';
+   const isOngoingGroup = (g?: string) => (g ?? '').replace(/\s+/g, '').toUpperCase() === 'ONGOING';
 
 // Status Update Record and History Types
 export interface ProjectStatusUpdate {
   st: string;
   sit: string;
   mit: string;
-  ls: string;
   lastUpdated: string;
   author?: string;
 }
@@ -61,7 +72,6 @@ export interface StatusHistoryEntry {
   st: string;
   sit: string;
   mit: string;
-  ls: string;
   note?: string;
   author: string;
 }
@@ -533,7 +543,7 @@ function RiskBubbleChart({
   const [hoveredProj, setHoveredProj] = useState<MasterProject | null>(null);
 
   const activeProjects = useMemo(() => {
-    return projects.filter(m => m.g === 'ON GOING');
+    return projects.filter(m => isOngoingGroup(m.g));
   }, [projects]);
 
   if (activeProjects.length === 0) {
@@ -547,16 +557,25 @@ function RiskBubbleChart({
   const T = 24;
   const B = 40;
 
+    // ===== SKALA X: logaritmik (Nilai Pekerjaan, Rp M) =====
   const xVals = activeProjects.map(m => m.nv);
-  const minX = 0;
-  const maxX = Math.max(...xVals, 50) * 1.1;
+  const X_MIN = 0.5; // log tidak punya 0, jadi sumbu mulai sedikit di kiri 1M
+  const X_MAX = Math.max(100, Math.max(...xVals) * 1.3);
+  const lg = (v: number) => Math.log10(Math.max(v, X_MIN));
+  const toX = (val: number) =>
+    L + ((lg(val) - lg(X_MIN)) / (lg(X_MAX) - lg(X_MIN))) * (W - L - R);
+  const xTicks = [1, 10, 100, 1000].filter(t => t <= X_MAX);                 // berlabel
+  const xMinor = [2, 3, 4, 5, 6, 7, 8, 9, 20, 30, 40, 50, 60, 70, 80, 90]    // garis bantu
+    .filter(t => t > X_MIN && t < X_MAX);
 
+  // ===== SKALA Y: symlog (Deviasi %, ada nilai negatif dan 0) =====
   const yVals = activeProjects.map(m => m.dv ?? ((m.rl ?? 0) - (m.pl ?? 0)));
-  const minY = Math.min(...yVals, -10) * 1.1;
-  const maxY = Math.max(...yVals, 10) * 1.1;
-
-  const toX = (val: number) => L + ((val - minX) / (maxX - minX || 1)) * (W - L - R);
-  const toY = (val: number) => H - B - ((val - minY) / (maxY - minY || 1)) * (H - T - B);
+  const sl = (v: number) => Math.sign(v) * Math.log10(1 + Math.abs(v));
+  const Y_LOW = [-10, -50, -100].find(t => t <= Math.min(...yVals)) ?? -100;
+  const Y_HIGH = Math.max(10, ...yVals);
+  const toY = (val: number) =>
+    H - B - ((sl(val) - sl(Y_LOW)) / (sl(Y_HIGH) - sl(Y_LOW))) * (H - T - B);
+  const yTicks = [-100, -50, -10, 0, Y_HIGH].filter(t => t >= Y_LOW);
 
   const sizeVals = activeProjects.map(m => m.nv);
   const minSz = Math.min(...sizeVals);
@@ -571,14 +590,14 @@ function RiskBubbleChart({
     <div style={{ position: 'relative', width: '100%' }}>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ overflow: 'visible' }}>
         {/* Y grid lines */}
-        {[minY, 0, maxY].map((val, idx) => {
+                {/* Y grid lines */}
+        {yTicks.map((val, idx) => {
           const yPos = toY(val);
-          if (yPos < T || yPos > H - B) return null;
           return (
             <React.Fragment key={idx}>
               <line x1={L} x2={W - R} y1={yPos} y2={yPos} stroke="var(--line)" strokeDasharray="3 3" />
               <text x={L - 6} y={yPos + 3.5} textAnchor="end" fontSize="11" fill="var(--mute)" fontWeight="600">
-                {val > 0 ? `+${val.toFixed(0)}%` : `${val.toFixed(0)}%`}
+                {val === Y_HIGH ? '>0' : `${val}%`}
               </text>
             </React.Fragment>
           );
@@ -586,25 +605,28 @@ function RiskBubbleChart({
 
         {/* Axis title Y */}
         <text x={15} y={(T + H - B) / 2} transform={`rotate(-90, 15, ${(T + H - B) / 2})`} textAnchor="middle" fontSize="11.5" fill="var(--ink)" fontWeight="700">
-          Deviasi (%)
+          Deviasi (%, skala log)
         </text>
 
         {/* X axis zero line */}
         <line x1={L} x2={W - R} y1={toY(0)} y2={toY(0)} stroke="var(--ink)" strokeWidth="1" opacity="0.3" />
 
-        {/* X grid labels */}
-        {[minX, (minX + maxX) / 2, maxX].map((val, idx) => {
-          const xPos = toX(val);
-          return (
-            <text key={idx} x={xPos} y={H - B + 14} textAnchor="middle" fontSize="11" fill="var(--mute)" fontWeight="600">
-              {val.toFixed(0)}M
+        {/* X grid: garis bantu minor + tick berlabel (skala log) */}
+        {xMinor.map(val => (
+          <line key={`m${val}`} x1={toX(val)} x2={toX(val)} y1={T} y2={H - B} stroke="var(--line)" opacity="0.45" />
+        ))}
+        {xTicks.map((val, idx) => (
+          <g key={idx}>
+            <line x1={toX(val)} x2={toX(val)} y1={T} y2={H - B} stroke="var(--line)" strokeWidth="1.2" />
+            <text x={toX(val)} y={H - B + 14} textAnchor="middle" fontSize="11" fill="var(--mute)" fontWeight="600">
+              {val}M
             </text>
-          );
-        })}
+          </g>
+        ))}
 
         {/* Axis title X */}
         <text x={W / 2} y={H - 4} textAnchor="middle" fontSize="11.5" fill="var(--ink)" fontWeight="700">
-          Nilai Pekerjaan (Rp M) →
+          Nilai Pekerjaan (Rp M, skala log) →
         </text>
 
         {/* Bubbles */}
@@ -1184,7 +1206,7 @@ function StatisticalBucketChart({
 // Timeline Akhir Kontrak (Titik per Project terhadap Garis Hari Ini)
 interface TimelineDeadlineItem {
   id: string | number;
-  source: 'G' | 'C'; // On going vs Close/Selesai
+  source: 'G' | 'C'; // Ongoing vs Closed/Selesai
   name: string;
   pic: string;
   endDate: string; // YYYY-MM-DD
@@ -1473,7 +1495,7 @@ function TimelineContractDeadlines({
               <div>
                 <b style={{ color: 'var(--ink)' }}>{hoveredItem.name}</b>
                 <div style={{ color: 'var(--mute)', fontSize: '11px', marginTop: '2px' }}>
-                  PIC: {hoveredItem.pic} • Akhir: {hoveredItem.endDate} ({hoveredItem.source === 'G' ? 'On Going' : 'Close'})
+                  PIC: {hoveredItem.pic} • Akhir: {hoveredItem.endDate} ({hoveredItem.source === 'G' ? 'Ongoing' : 'Closed'})
                 </div>
               </div>
               <span
@@ -1591,6 +1613,38 @@ const NAV_ITEMS = [
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'t1' | 't2' | 't4' | 't3'>('t1');
+
+  const [googleUser, setGoogleUser] = useState<FirebaseUser | null>(null);
+
+  useEffect(() => {
+    const unsub = initAuth(
+      (u) => setGoogleUser(u),
+      () => setGoogleUser(null)
+    );
+    return () => {
+      if (typeof unsub === 'function') unsub();
+    };
+  }, []);
+
+  const handleGoogleSignIn = async () => {
+    try {
+      const res = await googleSignIn();
+      if (res) {
+        setGoogleUser(res.user);
+        setStatusToast('Akun Google terhubung. Update status akan otomatis tercatat ke Google Sheets!');
+        setTimeout(() => setStatusToast(null), 3500);
+      }
+    } catch (err: any) {
+      console.error('Google sign in error:', err);
+    }
+  };
+
+  const handleGoogleSignOut = async () => {
+    await googleSignOut();
+    setGoogleUser(null);
+    setStatusToast('Koneksi Google Sheets diputuskan.');
+    setTimeout(() => setStatusToast(null), 3000);
+  };
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPinned, setMenuPinned] = useState<boolean>(
     () => typeof window !== 'undefined' && localStorage.getItem('menu-pinned') === 'true'
@@ -1640,6 +1694,8 @@ export default function App() {
   // Tab 1 (Ringkasan) Filters
   const [fs, setFs] = useState<string>(''); // Status filter
   const [fo, setFo] = useState<string>(''); // Pemilik filter
+  const [showAllSafe, setShowAllSafe] = useState<boolean>(false);
+  const [criticalFilter, setCriticalFilter] = useState<'ALL' | 'Delayed' | 'At risk'>('ALL');
 
   // Tab 2 (Detail project) Filters & Modal
   const [gs, setGs] = useState<string>(''); // Kelompok filter
@@ -1685,13 +1741,15 @@ export default function App() {
     setGlobalSearch('');
     setStartInput('');
     setEndInput('');
+    setShowAllSafe(false);
+    setCriticalFilter('ALL');
   };
 
   // Project Status Updates & History State (Persisted in localStorage)
   const [projectUpdates, setProjectUpdates] = useState<Record<number, ProjectStatusUpdate>>(() => {
     if (typeof window !== 'undefined') {
       try {
-        const saved = localStorage.getItem('project_status_updates_v1');
+        const saved = localStorage.getItem('project_status_updates_v2');
         if (saved) {
           const parsed = JSON.parse(saved);
           Object.keys(parsed).forEach(k => {
@@ -1712,7 +1770,7 @@ export default function App() {
   const [statusHistory, setStatusHistory] = useState<Record<number, StatusHistoryEntry[]>>(() => {
     if (typeof window !== 'undefined') {
       try {
-        const saved = localStorage.getItem('project_status_history_v1');
+        const saved = localStorage.getItem('project_status_history_v2');
         if (saved) {
           const parsed = JSON.parse(saved);
           Object.keys(parsed).forEach(k => {
@@ -1735,10 +1793,59 @@ export default function App() {
     return {};
   });
 
+  const [projectIdentityEdits, setProjectIdentityEdits] = useState<Record<number, Partial<MasterProject>>>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('project_identity_edits_v3');
+        if (saved) return JSON.parse(saved);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return {};
+  });
+
+  const [isIdentityEditOpen, setIsIdentityEditOpen] = useState(false);
+  const [identityToast, setIdentityToast] = useState<string | null>(null);
+  const [identityForm, setIdentityForm] = useState({
+    n: '',
+    wbs: '',
+    pic: '',
+    pem: '',
+    bamk: '',
+    ak: '',
+    akt: '',
+    nv: 0
+  });
+
+  const handleSaveIdentityEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selectedIdx === null || !projects[selectedIdx]) return;
+    const p = projects[selectedIdx];
+    setProjectIdentityEdits(prev => ({
+      ...prev,
+      [p.no]: {
+        n: identityForm.n,
+        wbs: identityForm.wbs,
+        pic: identityForm.pic,
+        pem: identityForm.pem,
+        bamk: identityForm.bamk,
+        ak: identityForm.ak,
+        akt: identityForm.akt,
+        nv: identityForm.nv,
+        nt: `Rp ${identityForm.nv.toLocaleString('id-ID')} Miliar`
+      }
+    }));
+    setIsIdentityEditOpen(false);
+    setIdentityToast('Project identity berhasil diperbarui.');
+    setTimeout(() => setIdentityToast(null), 3000);
+
+  };
+
   // Sync state to localStorage
   useEffect(() => {
     try {
-      localStorage.setItem('project_status_updates_v1', JSON.stringify(projectUpdates));
+      localStorage.setItem('project_status_updates_v2', JSON.stringify(projectUpdates));
     } catch (e) {
       console.error(e);
     }
@@ -1746,7 +1853,15 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem('project_status_history_v1', JSON.stringify(statusHistory));
+      localStorage.setItem('project_identity_edits_v3', JSON.stringify(projectIdentityEdits));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [projectIdentityEdits]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('project_status_history_v2', JSON.stringify(statusHistory));
     } catch (e) {
       console.error(e);
     }
@@ -1755,25 +1870,50 @@ export default function App() {
   // Merged live projects data reflecting all status and situation updates
   const projects = useMemo(() => {
     return M.map(m => {
+      const idEdit = projectIdentityEdits[m.no] || {};
       const up = projectUpdates[m.no];
-      if (up) {
-        return {
-          ...m,
-          st: up.st || m.st,
-          sit: up.sit ?? m.sit,
-          mit: up.mit ?? m.mit,
-          ls: up.ls ?? m.ls
-        };
-      }
-      return m;
+      const rawWbs = idEdit.wbs !== undefined && idEdit.wbs !== '' ? idEdit.wbs : m.wbs;
+      const rawSt = up?.st || idEdit.st || m.st;
+      return {
+        ...m,
+        ...idEdit,
+        wbs: rawWbs,
+        st: rawSt,
+        s: normalizeStatus(rawSt),
+        sit: up?.sit ?? idEdit.sit ?? m.sit,
+        mit: up?.mit ?? idEdit.mit ?? m.mit,
+      };
     });
-  }, [projectUpdates]);
+  }, [projectUpdates, projectIdentityEdits]);
 
   const f1 = (n: number) => n.toLocaleString('id-ID', { maximumFractionDigits: 1 });
 
-  // On going projects from Live Projects
+  const formatIndoDate = (val?: string | null): string => {
+    if (!val || val.trim() === '-' || val.trim() === '—' || val.trim() === '') return '-';
+    const clean = val.trim();
+    if (/[a-zA-Z]{3,}/.test(clean)) return clean;
+    const mMatch = clean.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+    if (mMatch) {
+      const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+      let m = Number(mMatch[1]);
+      let d = Number(mMatch[2]);
+      const y = Number(mMatch[3]);
+      if (m > 12 && d <= 12) {
+        const temp = m;
+        m = d;
+        d = temp;
+      }
+      if (m >= 1 && m <= 12) {
+        const dayStr = d < 10 ? `0${d}` : `${d}`;
+        return `${dayStr} ${months[m - 1]} ${y}`;
+      }
+    }
+    return clean;
+  };
+
+  // Ongoing projects from Live Projects
   const P = useMemo(() => {
-    return projects.filter(m => m.g === 'ON GOING');
+    return projects.filter(m => isOngoingGroup(m.g));
   }, [projects]);
 
   // Dynamic Kurva S Cutoff & Range based on Date Filter (Prioritas tanggal akhir, fallback tanggal awal)
@@ -1894,9 +2034,11 @@ export default function App() {
     })).filter(x => {
       const matchStatus =
         !fs ||
-        x.m.st === fs ||
-        (fs === 'DONE' && (x.m.st.startsWith('DONE') || x.m.st === 'SELESAI')) ||
-        (fs === 'LELANG / AANWIJZING' && (x.m.st.includes('LELANG') || x.m.st.includes('AANWIJZING')));
+        (fs === 'Ongoing' && x.m.st === 'Ongoing') ||
+        (fs === 'Delayed' && x.m.st === 'Delayed') ||
+        (fs === 'At risk' && x.m.st === 'At risk') ||
+        (fs === 'Finished' && x.m.st === 'Finished') ||
+        (fs === 'Closed' && x.m.st === 'Closed');
       const matchOwner = !fo || x.o === fo;
       const matchSearch =
         !globalSearch ||
@@ -1912,7 +2054,7 @@ export default function App() {
     return homeList
       .map(x => {
         const rawD = sisa(x.m.akd);
-        const isDone = x.m.st === 'DONE' || x.m.st.startsWith('DONE') || x.m.st === 'SELESAI';
+        const isDone = x.m.st === 'Finished'   
         const d = isDone && rawD !== null && rawD < 0 ? 0 : rawD;
         return { x, d };
       })
@@ -1928,10 +2070,51 @@ export default function App() {
       .sort((a, b) => a.d - b.d);
   }, [homeList, sisa, dateStart, dateEnd]);
 
-  // Tab 1 At Risk & Delayed
+  // Tab 1 Status Ongoing Categorization
+  const isDelayedStatus = useCallback((st: string) => /delay/i.test(st), []);
+  const isAtRiskStatus = useCallback((st: string) => /risk/i.test(st), []);
+  const isSafeStatus = useCallback((st: string) => !isDelayedStatus(st) && !isAtRiskStatus(st), [isDelayedStatus, isAtRiskStatus]);
+
+  const ongoingProjects = useMemo(() => {
+    return homeList.filter(x => isOngoingGroup(x.m.g));
+  }, [homeList]);
+
+  const DelayedProjects = useMemo(() => {
+    return ongoingProjects.filter(x => isDelayedStatus(x.m.st));
+  }, [ongoingProjects, isDelayedStatus]);
+
+  const atRiskProjects = useMemo(() => {
+    return ongoingProjects.filter(x => isAtRiskStatus(x.m.st));
+  }, [ongoingProjects, isAtRiskStatus]);
+
+  const safeProjects = useMemo(() => {
+    return ongoingProjects.filter(x => isSafeStatus(x.m.st));
+  }, [ongoingProjects, isSafeStatus]);
+
+  const sortedSafeProjects = useMemo(() => {
+    return [...safeProjects].sort((a, b) => {
+      const aRem = sisa(a.m.akd);
+      const bRem = sisa(b.m.akd);
+      const aOver = aRem !== null && aRem < 0 ? 1 : 0;
+      const bOver = bRem !== null && bRem < 0 ? 1 : 0;
+      if (aOver !== bOver) return bOver - aOver; // yang bertag "Lewat akhir kontrak" tampil duluan
+      return (aRem ?? 9999) - (bRem ?? 9999);
+    });
+  }, [safeProjects, sisa]);
+
+  const displayedSafeProjects = useMemo(() => {
+    return showAllSafe ? sortedSafeProjects : sortedSafeProjects.slice(0, 3);
+  }, [sortedSafeProjects, showAllSafe]);
+
+  const totalOngoing = ongoingProjects.length;
+  const DelayedPercent = totalOngoing ? Math.round((DelayedProjects.length / totalOngoing) * 100) : 0;
+  const atRiskPercent = totalOngoing ? Math.round((atRiskProjects.length / totalOngoing) * 100) : 0;
+  const safePercent = totalOngoing ? Math.round((safeProjects.length / totalOngoing) * 100) : 0;
+
+  // Tab 1 At risk   & Delayed
   const homeCriticalList = useMemo(() => {
     return homeList
-      .filter(x => x.m.st !== 'ON TRACK' && x.m.st !== 'DONE' && !x.m.st.startsWith('DONE') && x.m.st !== 'SELESAI')
+      .filter(x => x.m.st === 'At risk' || x.m.st === 'Delayed')
       .sort((a, b) => {
         const dvA = (a.m.rl ?? 0) - (a.m.pl ?? 0);
         const dvB = (b.m.rl ?? 0) - (b.m.pl ?? 0);
@@ -1939,15 +2122,30 @@ export default function App() {
       });
   }, [homeList]);
 
+  const critDelayedCount = useMemo(() => homeCriticalList.filter(x => isDelayedStatus(x.m.st)).length, [homeCriticalList, isDelayedStatus]);
+  const critAtRiskCount = useMemo(() => homeCriticalList.filter(x => isAtRiskStatus(x.m.st)).length, [homeCriticalList, isAtRiskStatus]);
+
+  const displayedCriticalList = useMemo(() => {
+    if (criticalFilter === 'Delayed') {
+      return homeCriticalList.filter(x => isDelayedStatus(x.m.st));
+    }
+    if (criticalFilter === 'At risk') {
+      return homeCriticalList.filter(x => isAtRiskStatus(x.m.st));
+    }
+    return homeCriticalList;
+  }, [homeCriticalList, criticalFilter, isDelayedStatus, isAtRiskStatus]);
+
   // Tab 2 Filtered List (Respects Date Range)
   const detailList = useMemo(() => {
     return projects.map((m, i) => ({ m, i })).filter(({ m }) => {
       const matchKelompok = !gs || m.g === gs;
       const matchStatus =
         !ss ||
-        m.st === ss ||
-        (ss === 'DONE' && (m.st.startsWith('DONE') || m.st === 'SELESAI')) ||
-        (ss === 'LELANG / AANWIJZING' && (m.st.includes('LELANG') || m.st.includes('AANWIJZING')));
+        (ss === 'Ongoing' && m.st === 'Ongoing') ||
+        (ss === 'Delayed' && m.st === 'Delayed') ||
+        (ss === 'At risk' && m.st === 'At risk') ||
+        (ss === 'Finished' && m.st === 'Finished') ||
+        (ss === 'Closed' && m.st === 'Closed');
       const matchSearch =
         !globalSearch ||
         m.n.toLowerCase().includes(globalSearch.toLowerCase()) ||
@@ -1959,10 +2157,9 @@ export default function App() {
 
   // Status update modal manager state
   const [statusViewMode, setStatusViewMode] = useState<'view' | 'edit' | 'history'>('view');
-  const [editSt, setEditSt] = useState<string>('ON TRACK');
+  const [editSt, setEditSt] = useState<string>('Ongoing');
   const [editSit, setEditSit] = useState<string>('');
   const [editMit, setEditMit] = useState<string>('');
-  const [editLs, setEditLs] = useState<string>('');
   const [editNote, setEditNote] = useState<string>('');
   const [statusToast, setStatusToast] = useState<string | null>(null);
 
@@ -1984,10 +2181,19 @@ export default function App() {
     const list = statusHistory[p.no];
     if (list && list.length > 0) {
       return list.map(entry => {
-        if (!entry.author || /sistem|bima|user|tim\s*proyek/i.test(entry.author)) {
-          return { ...entry, author: defaultPic };
+        let auth = entry.author;
+        if (!auth || /sistem|bima|user|tim\s*proyek/i.test(auth)) {
+          auth = defaultPic;
         }
-        return entry;
+        if (entry.id.startsWith('baseline-')) {
+          return {
+            ...entry,
+            author: auth,
+            sit: M[selectedIdx]?.sit || '',
+            mit: M[selectedIdx]?.mit || ''
+          };
+        }
+        return { ...entry, author: auth };
       });
     }
     return [
@@ -1995,9 +2201,8 @@ export default function App() {
         id: `baseline-${p.no}`,
         timestamp: 'Baseline Awal Kontrak',
         st: M[selectedIdx].st,
-        sit: M[selectedIdx].sit,
-        mit: M[selectedIdx].mit,
-        ls: M[selectedIdx].ls,
+        sit: M[selectedIdx].sit || '',
+        mit: M[selectedIdx].mit || '',
         note: 'Baseline status awal data BIMA',
         author: defaultPic
       }
@@ -2028,10 +2233,9 @@ export default function App() {
       id: `up-${Date.now()}`,
       timestamp: timestampStr,
       st: editSt,
-      sit: editSit.trim() || p.sit,
-      mit: editMit.trim() || p.mit,
-      ls: editLs.trim() || p.ls,
-      note: editNote.trim() || 'Pembaruan status berkala',
+      sit: editSit.trim(),
+      mit: editMit.trim(),
+      note: editNote.trim() || 'Pembaruan Problem & Action Plan',
       author: authorName
     };
 
@@ -2039,9 +2243,8 @@ export default function App() {
       ...prev,
       [p.no]: {
         st: editSt,
-        sit: editSit.trim() || p.sit,
-        mit: editMit.trim() || p.mit,
-        ls: editLs.trim() || p.ls,
+        sit: editSit.trim(),
+        mit: editMit.trim(),
         lastUpdated: timestampStr,
         author: authorName
       }
@@ -2055,7 +2258,6 @@ export default function App() {
           st: M[selectedIdx].st,
           sit: M[selectedIdx].sit,
           mit: M[selectedIdx].mit,
-          ls: M[selectedIdx].ls,
           note: 'Baseline status awal data BIMA',
           author: authorName
         }
@@ -2069,6 +2271,42 @@ export default function App() {
     setStatusToast(`Status update berhasil diperbarui oleh ${authorName} dan dicatat dalam riwayat!`);
     setTimeout(() => setStatusToast(null), 3500);
     setStatusViewMode('view');
+
+    (async () => {
+      let token = await getAccessToken();
+      if (!token) {
+        try {
+          const signRes = await googleSignIn();
+          if (signRes) {
+            token = signRes.accessToken;
+            setGoogleUser(signRes.user);
+          }
+        } catch (authErr) {
+          console.warn('Sign-in cancelled or bypassed:', authErr);
+        }
+      }
+
+      saveStatusUpdate({
+        no: p.no,
+        wbs: p.wbs && p.wbs !== '—' && p.wbs !== '-' ? p.wbs : (p.wbs || '—'),
+        tanggal: todayIso,
+        problem: newEntry.sit,
+        actionPlan: newEntry.mit,
+        catatan: newEntry.note
+      }, token)
+        .then(res => {
+          if (res.ok) {
+            setStatusToast(`Berhasil disimpan & tercatat pada baris ${res.targetRow} sheet 'Detail Project Catatan'!`);
+            setTimeout(() => setStatusToast(null), 4500);
+          } else {
+            setStatusToast(res.error || 'Catatan disimpan lokal (belum terhubung ke spreadsheet)');
+            setTimeout(() => setStatusToast(null), 4500);
+          }
+        })
+        .catch(err => {
+          console.error('Error syncing status update:', err);
+        });
+    })();
   };
 
   // Handler: Restore past status from history
@@ -2086,7 +2324,6 @@ export default function App() {
         st: entry.st,
         sit: entry.sit,
         mit: entry.mit,
-        ls: entry.ls,
         lastUpdated: entry.timestamp,
         author: authorName
       }
@@ -2126,7 +2363,6 @@ export default function App() {
             st: top.st,
             sit: top.sit,
             mit: top.mit,
-            ls: top.ls,
             lastUpdated: top.timestamp,
             author: top.author
           }
@@ -2144,21 +2380,8 @@ export default function App() {
     setTimeout(() => setStatusToast(null), 3000);
   };
 
-  const stc = (s: string) => {
-    if (!s) return '#10b981';
-    if (/AT RISK/i.test(s)) return '#ef4444'; // at risk -> merah
-    if (/DELAYED/i.test(s) && !/DONE/i.test(s)) return '#f97316'; // delayed -> oren
-    if (/DONE/i.test(s) || /SELESAI/i.test(s)) return '#2563eb'; // done -> biru
-    if (/ON TRACK/i.test(s)) return '#10b981'; // on track -> hijau
-    if (/ACTIVE/i.test(s) || /PROSES/i.test(s)) return '#eab308'; // active -> kuning
-    if (/LELANG/i.test(s) || /AANWIJZING/i.test(s)) return '#94a3b8'; // lelang/aanwizjing -> abu-abu
-    return SC[s] || '#94a3b8';
-  };
-
-  const stText = (s: string) => {
-    if (/ACTIVE/i.test(s)) return '#0f172a';
-    return '#ffffff';
-  };
+  const stc = (s: string) => SC[normalizeStatus(s)] || '#94a3b8';
+  const stText = (_s: string) => '#ffffff';
 
   const getOwnerBadge = (pem: string) => {
     if (/semarang/i.test(pem)) return { code: 'TS', name: 'TPK Semarang' };
@@ -2182,9 +2405,9 @@ export default function App() {
   };
 
   const formatStatusLabel = (s: string) => {
-    if (/at risk/i.test(s)) return 'At risk';
-    if (/delayed/i.test(s) && !/done/i.test(s)) return 'Delayed';
-    if (/on track/i.test(s)) return 'On track';
+    if (/At risk/i.test(s)) return 'At risk';
+    if (/Delayed/i.test(s) && !/done/i.test(s)) return 'Delayed';
+    if (/Ongoing/i.test(s)) return 'Ongoing';
     if (/done/i.test(s) || /selesai/i.test(s)) return 'Selesai';
     if (/active/i.test(s)) return 'Active';
     if (/lelang/i.test(s)) return 'Lelang';
@@ -2192,14 +2415,14 @@ export default function App() {
   };
 
   const getGroupColor = (g: string) => {
-    if (g === 'ON GOING') return '#10b981';
+    if (isOngoingGroup(g)) return '#10b981';
     if (g === 'SELESAI') return '#2563eb';
     if (g === 'PO') return '#eab308';
     return '#94a3b8';
   };
 
   const getGroupLabel = (g: string) => {
-    if (g === 'ON GOING') return 'On going';
+    if (isOngoingGroup(g)) return 'Ongoing';
     if (g === 'SELESAI') return 'Selesai';
     if (g === 'PO') return 'PO';
     if (g === 'LELANG') return 'Lelang';
@@ -2210,16 +2433,17 @@ export default function App() {
     setSelectedIdx(idx);
     setStatusViewMode('view');
     setStatusToast(null);
+    setIdentityToast(null);
   };
 
-  const closeDetailModal = () => {
+  const ClosedetailModal = () => {
     setSelectedIdx(null);
   };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        closeDetailModal();
+        ClosedetailModal();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -2309,7 +2533,7 @@ export default function App() {
     return BK.map(b => [b, docFiltered.filter(c => c.b === b).length, 'var(--accent)'] as [string, number, string]);
   }, [docFiltered]);
 
-  // Comprehensive Deadline Timeline Items (Khusus Data On Going with end dates)
+  // Comprehensive Deadline Timeline Items (Khusus Data Ongoing with end dates)
   // Evaluates each project against "hari ini" (current date context secara dinamis)
   const contractDeadlineItems = useMemo<TimelineDeadlineItem[]>(() => {
     const now = currentDate;
@@ -2317,7 +2541,7 @@ export default function App() {
     const dayMs = 86400000;
     const itemsMap = new Map<string, TimelineDeadlineItem>();
 
-    // 1. From docFiltered (Contracts C) that have an end date (e) - Khusus On Going (c.s === 'G')
+    // 1. From docFiltered (Contracts C) that have an end date (e) - Khusus Ongoing (c.s === 'G')
     docFiltered.forEach(c => {
       if (c.s === 'G' && c.e && /^\d{4}-\d{2}-\d{2}$/.test(c.e)) {
         const [ey, em, ed] = c.e.split('-').map(Number);
@@ -2340,14 +2564,14 @@ export default function App() {
           diffDays,
           statusCategory,
           progress: c.p,
-          rawStatus: 'On Going'
+          rawStatus: 'Ongoing'
         });
       }
     });
 
-    // 2. Also incorporate Master Projects (M) with akd that are ON GOING
+    // 2. Also incorporate Master Projects (M) with akd that are Ongoing
     projects.forEach(m => {
-      if (m.g === 'ON GOING' && m.akd && /^\d{4}-\d{2}-\d{2}$/.test(m.akd)) {
+      if (isOngoingGroup(m.g) && m.akd && /^\d{4}-\d{2}-\d{2}$/.test(m.akd)) {
         // Respect PIC filter
         const mPic = m.pic || getProjectPic(m.no);
         if (dsP && mPic.toUpperCase() !== dsP.toUpperCase()) return;
@@ -2492,6 +2716,63 @@ export default function App() {
           </div>
 
           <div className="topbar-actions">
+            {googleUser ? (
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: 'rgba(16, 185, 129, 0.12)',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                  padding: '5px 10px',
+                  borderRadius: '8px',
+                  fontSize: '11px',
+                  color: '#059669',
+                  fontWeight: 700
+                }}
+                title={`Google Sheets Terhubung: ${googleUser.email || googleUser.displayName}`}
+              >
+                <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#10b981' }} />
+                <span>Sheets Terhubung</span>
+                <button
+                  type="button"
+                  onClick={handleGoogleSignOut}
+                  style={{ background: 'none', border: 'none', color: 'var(--mute)', cursor: 'pointer', padding: '0 2px', fontSize: '11px', marginLeft: '4px' }}
+                  title="Putuskan sambungan Google"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleGoogleSignIn}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: 'var(--bg-card, #ffffff)',
+                  color: 'var(--ink, #374151)',
+                  border: '1px solid var(--border, #d1d5db)',
+                  padding: '5px 11px',
+                  borderRadius: '8px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
+                }}
+                title="Hubungkan akun Google untuk menyimpan otomatis ke spreadsheet 'Detail Project Catatan'"
+              >
+                <svg width="14" height="14" viewBox="0 0 48 48">
+                  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                </svg>
+                <span>Hubungkan Sheets</span>
+              </button>
+            )}
+
             <button
               id="fr"
               className="tg reset-filter-btn"
@@ -2524,41 +2805,19 @@ export default function App() {
 
           {/* FILTER BAR SATU BARIS (Rentang Tanggal + Filter Tab + Button Reset Filter di Kanan) */}
           <div className="topbar-filters">
-            {/* Rentang Tanggal Kalender (Hadir di setiap page/tab) */}
-            <div className="topbar-date-group">
-              <div className="date-filter-label">
-                <Calendar size={14} />
-                <span>Rentang Tanggal</span>
-              </div>
-
-              <div className="date-inputs-wrapper">
-                <div className="date-input-item">
-                  <label htmlFor="filter-date-start">Awal</label>
-                  <input
-                    id="filter-date-start"
-                    type="date"
-                    className="date-native-input"
-                    value={startInput}
-                    onChange={e => setStartInput(e.target.value)}
-                    aria-label="Tanggal awal rentang"
-                  />
-                </div>
-
-                <span className="date-sep-arrow">s/d</span>
-
-                <div className="date-input-item">
-                  <label htmlFor="filter-date-end">Akhir</label>
-                  <input
-                    id="filter-date-end"
-                    type="date"
-                    className="date-native-input"
-                    value={endInput}
-                    onChange={e => setEndInput(e.target.value)}
-                    aria-label="Tanggal akhir rentang"
-                  />
-                </div>
-              </div>
-            </div>
+            {/* Filter Periode (Sesuai Mockup: Bulan, Tahun mulai 2023, & Kartu Minggu W-90 dst) */}
+            <PeriodFilter
+              startInput={startInput}
+              endInput={endInput}
+              onSelectPeriod={(start, end) => {
+                setStartInput(start);
+                setEndInput(end);
+              }}
+              onClearPeriod={() => {
+                setStartInput('');
+                setEndInput('');
+              }}
+            />
 
             {/* Filter spesifik tab Ringkasan (Tab 1) */}
             {activeTab === 't1' && (
@@ -2570,11 +2829,11 @@ export default function App() {
                   onChange={e => setFs(e.target.value)}
                 >
                   <option value="">Semua Status</option>
-                  {Object.keys(SC).map(s => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
+                  <option value="Ongoing">Ongoing</option>
+                  <option value="Delayed">Delayed</option>
+                  <option value="At risk">At risk</option>
+                  <option value="Finished">Finished</option>
+                  <option value="Closed">Closed</option>
                 </select>
                 <select
                   id="fo"
@@ -2617,11 +2876,11 @@ export default function App() {
                   onChange={e => setSs(e.target.value)}
                 >
                   <option value="">Semua Status</option>
-                  {Object.keys(SC).map(s => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
+                  <option value="Ongoing">Ongoing</option>
+                  <option value="Delayed">Delayed</option>
+                  <option value="At risk">At risk</option>
+                  <option value="Finished">Finished</option>
+                  <option value="Closed">Closed</option>
                 </select>
               </>
             )}
@@ -2694,8 +2953,8 @@ export default function App() {
                   onChange={e => setDsS(e.target.value)}
                 >
                   <option value="">Semua Kontrak</option>
-                  <option value="G">Kontrak On Going</option>
-                  <option value="C">Kontrak Selesai (Close)</option>
+                  <option value="G">Kontrak Ongoing</option>
+                  <option value="C">Kontrak Selesai (Closed)</option>
                 </select>
                 <select
                   id="dsP"
@@ -2755,7 +3014,7 @@ export default function App() {
                 <div className="kk" style={{ borderTop: '3px solid #3b82f6' }}>
                   <div className="kk-top">
                     <i className="kk-ic"><FolderKanban size={18} /></i>
-                    <span>Project On Going</span>
+                    <span>Project Ongoing</span>
                   </div>
                   <b>{homeList.length}</b>
                   <div className="kk-bar"><i style={{ width: '100%', background: '#3b82f6' }} /></div>
@@ -2771,18 +3030,18 @@ export default function App() {
                 <div className="kk" style={{ borderTop: '3px solid #ef4444' }}>
                   <div className="kk-top">
                     <i className="kk-ic bad"><AlertTriangle size={18} /></i>
-                    <span>At Risk Atau Delayed</span>
+                    <span>At risk   Atau Delayed</span>
                   </div>
-                  <b style={{ color: homeList.filter(x => x.m.st !== 'ON TRACK').length > 0 ? '#ef4444' : 'inherit' }}>
-                    {homeList.filter(x => x.m.st !== 'ON TRACK').length}
+                  <b style={{ color: homeList.filter(x => (x.m.st === 'Delayed' || x.m.st === 'At risk')).length > 0 ? '#ef4444' : 'inherit' }}>
+                    {homeList.filter(x => (x.m.st === 'Delayed' || x.m.st === 'At risk')).length}
                     {homeList.length
                       ? ` (${Math.round(
-                          (homeList.filter(x => x.m.st !== 'ON TRACK').length / homeList.length) * 100
+                          (homeList.filter(x => (x.m.st === 'Delayed' || x.m.st === 'At risk')).length / homeList.length) * 100
                         )}%)`
                       : ''}
                   </b>
-                  <div className="kk-bar bad" style={{ background: 'var(--track)' }}>
-                    <i style={{ width: `${homeList.length ? (homeList.filter(x => x.m.st !== 'ON TRACK').length / homeList.length) * 100 : 0}%`, background: '#ef4444' }} />
+                  <div className="kk-bar bad" style={{ background: '#BFC6C4' }}>
+                    <i style={{ width: `${homeList.length ? (homeList.filter(x => (x.m.st === 'Delayed' || x.m.st === 'At risk')).length / homeList.length) * 100 : 0}%`, background: '#ef4444' }} />
                   </div>
                 </div>
                 <div className="kk" style={{ borderTop: '3px solid #6366f1' }}>
@@ -2827,96 +3086,192 @@ export default function App() {
                 </div>
 
                 <div className="panel">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '14px' }}>
-                    <div>
-                      <h2 style={{ margin: '0 0 2px 0' }}>Akhir Kontrak Project On Going</h2>
-                      <p style={{ fontSize: '11.5px', color: 'var(--mute)', margin: 0, fontWeight: 500 }}>
-                        Berdasarkan batas akhir kontrak terkini terhadap hari ini
-                      </p>
-                    </div>
-                    <span
-                      title="Otomatis mengikuti pergantian hari dan tanggal secara real-time"
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        color: 'var(--accent)',
-                        background: 'rgba(37, 99, 235, 0.08)',
-                        border: '1px solid rgba(37, 99, 235, 0.22)',
-                        padding: '4px 10px',
-                        borderRadius: '6px',
-                        whiteSpace: 'nowrap'
-                      }}
-                    >
-                      <span
-                        style={{
-                          width: '6px',
-                          height: '6px',
-                          borderRadius: '50%',
-                          background: '#10b981',
-                          boxShadow: '0 0 6px rgba(16, 185, 129, 0.6)',
-                          display: 'inline-block'
-                        }}
-                      />
-                      <span>Hari Ini: <strong>{todayFullLabel}</strong></span>
-                    </span>
+                  <div style={{ marginBottom: '14px' }}>
+                    <h2 style={{ margin: '0 0 2px 0' }}>Status project</h2>
                   </div>
-                  <div className="bk" id="hbk">
-                    <div style={{ borderTop: '3px solid #ef4444' }}>
-                      Terlewat<b style={{ color: '#ef4444' }}>{homeDeadlineList.filter(y => y.d < 0).length}</b>
+
+                  {/* 3 Status Cards in grid: Ongoing, Delay, At Risk */}
+                  <div className="ov-status-grid">
+                    {/* 1. Ongoing (Hijau #10b981) */}
+                    <div className="ov-status-card" style={{ borderTop: '3px solid #10b981' }}>
+                      <div>
+                        <div className="ov-status-head">
+                          <span className="ov-status-dot" style={{ background: '#10b981' }} />
+                          <span>Ongoing</span>
+                        </div>
+                        <div className="ov-status-num">{safeProjects.length}</div>
+                        <div className="ov-status-sub">{safePercent}% dari project ongoing</div>
+                      </div>
                     </div>
-                    <div style={{ borderTop: '3px solid #f97316' }}>
-                      0-30 hari<b style={{ color: '#f97316' }}>{homeDeadlineList.filter(y => y.d >= 0 && y.d <= 30).length}</b>
+
+                    {/* 2. Delay (Orange #f97316) */}
+                    <div className="ov-status-card" style={{ borderTop: '3px solid #f97316' }}>
+                      <div>
+                        <div className="ov-status-head">
+                          <span className="ov-status-dot" style={{ background: '#f97316' }} />
+                          <span>Delay</span>
+                        </div>
+                        <div className="ov-status-num">{DelayedProjects.length}</div>
+                        <div className="ov-status-sub">{DelayedPercent}% dari project ongoing</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCriticalFilter('Delayed');
+                          document.getElementById('hp-panel')?.scrollIntoView({ behavior: 'smooth' });
+                        }}
+                        className="ov-status-link"
+                      >
+                        Lihat detail di tabel
+                      </button>
                     </div>
-                    <div style={{ borderTop: '3px solid #f59e0b' }}>
-                      31-90 hari<b style={{ color: '#f59e0b' }}>{homeDeadlineList.filter(y => y.d > 30 && y.d <= 90).length}</b>
-                    </div>
-                    <div style={{ borderTop: '3px solid #64748b' }}>
-                      &gt; 90 hari<b style={{ color: '#64748b' }}>{homeDeadlineList.filter(y => y.d > 90).length}</b>
+
+                    {/* 3. At Risk (Merah #ef4444) */}
+                    <div className="ov-status-card" style={{ borderTop: '3px solid #ef4444' }}>
+                      <div>
+                        <div className="ov-status-head">
+                          <span className="ov-status-dot" style={{ background: '#ef4444' }} />
+                          <span>At Risk</span>
+                        </div>
+                        <div className="ov-status-num">{atRiskProjects.length}</div>
+                        <div className="ov-status-sub">{atRiskPercent}% dari project ongoing</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCriticalFilter('At risk');
+                          document.getElementById('hp-panel')?.scrollIntoView({ behavior: 'smooth' });
+                        }}
+                        className="ov-status-link"
+                      >
+                        Lihat detail di tabel
+                      </button>
                     </div>
                   </div>
 
-                  <div style={{ marginTop: '16px' }}>
-                    <div style={{ fontSize: '12px', color: 'var(--mute)', fontWeight: 600, marginBottom: '10px' }}>
-                      3 Project Paling Lewat
+                  {/* Segmented Proportion Bar: Ongoing (Green), Delay (Orange), At Risk (Red) */}
+                  <div className="ov-seg-bar">
+                    {safeProjects.length > 0 && (
+                      <div
+                        className="ov-seg-item"
+                        style={{
+                          width: `${totalOngoing ? (safeProjects.length / totalOngoing) * 100 : 0}%`,
+                          background: '#10b981'
+                        }}
+                        title={`Ongoing: ${safeProjects.length} (${safePercent}%)`}
+                      />
+                    )}
+                    {DelayedProjects.length > 0 && (
+                      <div
+                        className="ov-seg-item"
+                        style={{
+                          width: `${totalOngoing ? (DelayedProjects.length / totalOngoing) * 100 : 0}%`,
+                          background: '#f97316'
+                        }}
+                        title={`Delay: ${DelayedProjects.length} (${DelayedPercent}%)`}
+                      />
+                    )}
+                    {atRiskProjects.length > 0 && (
+                      <div
+                        className="ov-seg-item"
+                        style={{
+                          width: `${totalOngoing ? (atRiskProjects.length / totalOngoing) * 100 : 0}%`,
+                          background: '#ef4444'
+                        }}
+                        title={`At Risk: ${atRiskProjects.length} (${atRiskPercent}%)`}
+                      />
+                    )}
+                  </div>
+
+                  {/* Warning Box */}
+                  <div className="ov-alert-box">
+                    <strong>{DelayedProjects.length + atRiskProjects.length} project perlu perhatian</strong>{' '}
+                    <span>Detail lengkap ada di tabel di bawah.</span>
+                  </div>
+
+                  {/* Project Ongoing yang Aman List */}
+                  <div>
+                    <div className="ov-safe-header">
+                      <span className="ov-status-dot" style={{ background: '#10b981' }} />
+                      <span>Project Ongoing</span>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {homeDeadlineList
-                        .filter(y => y.d < 0)
-                        .slice(0, 3)
-                        .map(y => (
-                          <div
-                            key={y.x.m.no}
-                            tabIndex={0}
-                            onClick={() => openDetailModal(y.x.m.no - 1)}
-                            style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              padding: '10px 14px',
-                              background: 'var(--bg-app)',
-                              border: '1px solid var(--line)',
-                              borderRadius: '8px',
-                              cursor: 'pointer',
-                              fontSize: '13px',
-                              transition: 'all 0.15s ease'
-                            }}
-                          >
-                            <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{y.x.m.n}</span>
-                            <span style={{ color: '#ef4444', fontWeight: 700, whiteSpace: 'nowrap', marginLeft: '12px' }}>
-                              terlewat {-y.d} hari
-                            </span>
-                          </div>
-                        ))}
+
+                    <div className="ov-safe-list">
+                      {displayedSafeProjects.length === 0 ? (
+                        <div style={{ fontSize: '12px', color: 'var(--mute)', padding: '8px 0' }}>
+                          Tidak ada project Ongoing yang aman untuk filter ini.
+                        </div>
+                      ) : (
+                        displayedSafeProjects.map(x => {
+                          const rem = sisa(x.m.akd);
+                          const isOverdue = rem !== null && rem < 0;
+                          const picName = x.m.pic || getProjectPic(x.m.no);
+                          return (
+                            <div
+                              key={x.m.no}
+                              tabIndex={0}
+                              onClick={() => openDetailModal(x.m.no - 1)}
+                              className="ov-safe-item"
+                              title={`${x.m.n} - Klik untuk membuka detail`}
+                            >
+                              <div className="ov-safe-name">
+                                <span className="ov-status-dot" style={{ background: '#10b981', width: '6px', height: '6px' }} />
+                                <span className="ov-safe-title">{x.m.n}</span>
+                              </div>
+                              <div className="ov-safe-meta">
+                                {picName && <span className="ov-safe-pic">{picName}</span>}
+                                {isOverdue && <span className="ov-safe-tag">Lewat akhir kontrak</span>}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
                     </div>
+
+                    {sortedSafeProjects.length > 3 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllSafe(!showAllSafe)}
+                        className="ov-toggle-btn"
+                      >
+                        {showAllSafe
+                          ? 'Tampilkan lebih sedikit'
+                          : `Lihat semua ${sortedSafeProjects.length} project`}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
 
-              <div className="panel">
-                <h2>Perlu Perhatian: Delayed Dan At Risk</h2>
+              {/* Tabel Perlu Perhatian: At risk   dan Delay */}
+              <div className="panel" id="hp-panel">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '14px' }}>
+                  <h2 style={{ margin: 0 }}>Perlu Perhatian: At risk   dan Delay</h2>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => setCriticalFilter('ALL')}
+                      className={`ov-filter-btn ${criticalFilter === 'ALL' ? 'active' : ''}`}
+                    >
+                      Semua ({homeCriticalList.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCriticalFilter('At risk')}
+                      className={`ov-filter-btn ${criticalFilter === 'At risk' ? 'active' : ''}`}
+                    >
+                      At risk   ({critAtRiskCount})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCriticalFilter('Delayed')}
+                      className={`ov-filter-btn ${criticalFilter === 'Delayed' ? 'active' : ''}`}
+                    >
+                      Delay ({critDelayedCount})
+                    </button>
+                  </div>
+                </div>
+
                 <div className="scroll">
                   <table>
                     <thead>
@@ -2932,14 +3287,14 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody id="hp">
-                      {homeCriticalList.length === 0 ? (
+                      {displayedCriticalList.length === 0 ? (
                         <tr>
                           <td colSpan={8} className="src">
                             Tidak ada project untuk filter ini.
                           </td>
                         </tr>
                       ) : (
-                        homeCriticalList.map(x => {
+                        displayedCriticalList.map(x => {
                           const dv = (x.m.rl ?? 0) - (x.m.pl ?? 0);
                           const d = sisa(x.m.akd);
                           return (
@@ -2953,7 +3308,7 @@ export default function App() {
                               <td>{x.m.n}</td>
                               <td>{x.o}</td>
                               <td>{f1(x.m.nv)}</td>
-                              <td style={{ color: dv < -20 ? 'var(--bad)' : 'inherit' }}>
+                              <td style={{ color: dv < -20 ? 'var(--bad)' : 'inherit', fontWeight: 600 }}>
                                 {f1(dv)}%
                               </td>
                               <td>
@@ -3034,23 +3389,23 @@ export default function App() {
                 <div className="kk" style={{ borderTop: '3px solid #06b6d4' }}>
                   <div className="kk-top">
                     <i className="kk-ic" style={{ background: '#cffafe', color: '#0891b2' }}><CheckCircle2 size={18} /></i>
-                    <span>Status On Track</span>
+                    <span>Status Ongoing</span>
                   </div>
-                  <b>{detailList.filter(x => x.m.st === 'ON TRACK').length}</b>
+                  <b>{detailList.filter(x => x.m.st === 'Ongoing').length}</b>
                   <div className="kk-bar">
-                    <i style={{ width: `${detailList.length ? (detailList.filter(x => x.m.st === 'ON TRACK').length / detailList.length) * 100 : 0}%`, background: '#06b6d4' }} />
+                    <i style={{ width: `${detailList.length ? (detailList.filter(x => x.m.st === 'Ongoing').length / detailList.length) * 100 : 0}%`, background: '#06b6d4' }} />
                   </div>
                 </div>
                 <div className="kk" style={{ borderTop: '3px solid #ef4444' }}>
                   <div className="kk-top">
                     <i className="kk-ic bad"><AlertTriangle size={18} /></i>
-                    <span>Delayed / At Risk</span>
+                    <span>Delayed / At risk</span>
                   </div>
-                  <b style={{ color: detailList.filter(x => x.m.st !== 'ON TRACK').length > 0 ? '#ef4444' : 'inherit' }}>
-                    {detailList.filter(x => x.m.st !== 'ON TRACK').length}
+                  <b style={{ color: detailList.filter(x => (x.m.st === 'Delayed' || x.m.st === 'At risk')).length > 0 ? '#ef4444' : 'inherit' }}>
+                    {detailList.filter(x => (x.m.st === 'Delayed' || x.m.st === 'At risk')).length}
                   </b>
                   <div className="kk-bar bad">
-                    <i style={{ width: `${detailList.length ? (detailList.filter(x => x.m.st !== 'ON TRACK').length / detailList.length) * 100 : 0}%`, background: '#ef4444' }} />
+                    <i style={{ width: `${detailList.length ? (detailList.filter(x => (x.m.st === 'Delayed' || x.m.st === 'At risk')).length / detailList.length) * 100 : 0}%`, background: '#ef4444' }} />
                   </div>
                 </div>
               </div>
@@ -3091,7 +3446,7 @@ export default function App() {
                         detailList.map(({ m, i }) => {
                           const c = stc(m.st);
                           const badge = getOwnerBadge(m.pem);
-                          const gInfo = GK.find(g => g[0] === m.g) || ['ON GOING', m.g, '#10b981'];
+                          const gInfo = GK.find(g => g[0] === m.g) || ['Ongoing', m.g, '#10b981'];
                           const dv = m.dv;
                           const dvElem = dv == null ? (
                             <span className="dv nil">–</span>
@@ -3113,9 +3468,16 @@ export default function App() {
                               <td className="no">{m.no}</td>
                               <td className="nm">
                                 {m.n}
-                                <div className="grp" style={{ '--g': gInfo[2] } as React.CSSProperties}>
-                                  <i></i>
-                                  <span>{gInfo[1]}</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px', flexWrap: 'wrap' }}>
+                                  {m.wbs && m.wbs !== '—' && m.wbs !== '-' && (
+                                    <span style={{ fontSize: '10px', fontFamily: 'monospace', fontWeight: 700, background: 'rgba(37, 99, 235, 0.08)', color: 'var(--accent)', padding: '1px 5px', borderRadius: '4px' }}>
+                                      {m.wbs}
+                                    </span>
+                                  )}
+                                  <div className="grp" style={{ '--g': gInfo[2] } as React.CSSProperties}>
+                                    <i></i>
+                                    <span>{gInfo[1]}</span>
+                                  </div>
                                 </div>
                               </td>
                               <td>
@@ -3149,7 +3511,7 @@ export default function App() {
                                 </span>
                                 {(() => {
                                   const d = sisa(m.akd);
-                                  const isDone = m.st === 'DONE' || m.st.startsWith('DONE' ) || m.st === 'SELESAI';
+                                  const isDone = m.st === 'Finished'    
                                   if (!isDone && d !== null && d < 0) {
                                     return (
                                       <div
@@ -3213,7 +3575,6 @@ export default function App() {
                         <div className="kinfo-card" style={{ borderTop: '3px solid #3b82f6' }}>
                           <div className="kinfo-head">
                             <span className="kinfo-title">Bobot Proyek</span>
-                            <span className="kinfo-pill">{tag}</span>
                           </div>
                           <div className="kinfo-val">{f1(bobot)}%</div>
                           <div className="kinfo-desc">Dari Total Kurva S</div>
@@ -3223,7 +3584,6 @@ export default function App() {
                         <div className="kinfo-card" style={{ borderTop: '3px solid #10b981' }}>
                           <div className="kinfo-head">
                             <span className="kinfo-title">Nilai Pekerjaan</span>
-                            <span className="kinfo-pill">{tag}</span>
                           </div>
                           <div className="kinfo-val">Rp{f1(nilai)} M</div>
                           <div className="kinfo-desc">Total Alokasi Nilai</div>
@@ -3233,7 +3593,6 @@ export default function App() {
                         <div className="kinfo-card" style={{ borderTop: '3px solid #f59e0b' }}>
                           <div className="kinfo-head">
                             <span className="kinfo-title">Realisasi</span>
-                            <span className="kinfo-pill">{tag}</span>
                           </div>
                           <div className="kinfo-val">{f1(r)}%</div>
                           <div className="kinfo-desc">Rencana {f1(p)}% (Per {cutoffMonthLabel})</div>
@@ -3243,7 +3602,6 @@ export default function App() {
                         <div className="kinfo-card" style={{ borderTop: '3px solid #8b5cf6' }}>
                           <div className="kinfo-head">
                             <span className="kinfo-title">Deviasi</span>
-                            <span className="kinfo-pill">{tag}</span>
                           </div>
                           <div className="kinfo-val" style={{ color: deviasi < -3 ? '#ef4444' : deviasi < 0 ? '#f59e0b' : '#10b981' }}>
                             {deviasi > 0 ? `+${f1(deviasi)}%` : `${f1(deviasi)}%`}
@@ -3315,7 +3673,7 @@ export default function App() {
                         {/* ===== KPI (gaya kartu seperti tab Kurva S) ===== */}
               <div className="t3-kpis" id="dk">
                 {(() => {
-                  const scope = dsS === 'G' ? 'On Going' : dsS === 'C' ? 'Close' : 'Semua';
+                  const scope = dsS === 'G' ? 'Ongoing' : dsS === 'C' ? 'Closed' : 'Semua';
                   const jenis = dsJ === 'U' ? 'User' : dsJ === 'V' ? 'Vendor' : 'User + Vendor';
                   const pctUnder = docStats.total ? Math.round((docStats.under100 / docStats.total) * 100) : 0;
                   const totalCells = docFiltered.length * 20;
@@ -3509,14 +3867,14 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Timeline Akhir Kontrak (Titik per Project terhadap Garis "Hari Ini") - Muncul jika filter kontrak dipilih yang on going */}
+              {/* Timeline Akhir Kontrak (Titik per Project terhadap Garis "Hari Ini") - Muncul jika filter kontrak dipilih yang Ongoing */}
               {dsS === 'G' && (
                 <div className="panel" style={{ marginTop: '18px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
                     <div>
                       <h2>Timeline Akhir Kontrak (Titik Per Project Terhadap Garis “Hari Ini”)</h2>
                       <p style={{ margin: '2px 0 0', fontSize: '11.5px', color: 'var(--mute)' }}>
-                        Menampilkan project on going terhadap batas waktu hari ini ({todayDisplayLabel}). Titik merah = lewat batas waktu, kuning = mendekati (&lt; 60 hari), hijau = aman.
+                        Menampilkan project Ongoing terhadap batas waktu hari ini ({todayDisplayLabel}). Titik merah = lewat batas waktu, kuning = mendekati (&lt; 60 hari), hijau = aman.
                       </p>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -3545,7 +3903,7 @@ export default function App() {
                           borderRadius: '6px'
                         }}
                       >
-                        Filter Aktif: Kontrak On Going ({contractDeadlineItems.length} Proyek)
+                        Filter Aktif: Kontrak Ongoing ({contractDeadlineItems.length} Proyek)
                       </span>
                     </div>
                   </div>
@@ -3567,15 +3925,34 @@ export default function App() {
               aria-modal="true"
               aria-labelledby="ovt"
               onClick={e => {
-                if (e.target === e.currentTarget) closeDetailModal();
+                if (e.target === e.currentTarget) ClosedetailModal();
               }}
             >
               <div className="ovb">
                 <div className="ovh">
-                  <h2 id="ovt">
-                    {projects[selectedIdx].no}. {projects[selectedIdx].n}
-                  </h2>
-                  <button id="ovx" className="rs" aria-label="Tutup detail" onClick={closeDetailModal}>
+                  <div>
+                    {projects[selectedIdx].wbs && projects[selectedIdx].wbs !== '—' && projects[selectedIdx].wbs !== '-' && (
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          marginBottom: '4px',
+                          background: 'rgba(37, 99, 235, 0.12)',
+                          color: 'var(--accent)',
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          fontFamily: 'monospace'
+                        }}
+                      >
+                        WBS: {projects[selectedIdx].wbs}
+                      </span>
+                    )}
+                    <h2 id="ovt" style={{ margin: 0 }}>
+                      {projects[selectedIdx].no}. {projects[selectedIdx].n}
+                    </h2>
+                  </div>
+                  <button id="ovx" className="rs" aria-label="Tutup detail" onClick={ClosedetailModal}>
                     Tutup ✕
                   </button>
                 </div>
@@ -3648,14 +4025,14 @@ export default function App() {
                     </div>
                     {(() => {
                       const p = projects[selectedIdx];
-                      const isDone = p.st === 'DONE' || p.st.startsWith('DONE') || p.st === 'SELESAI';
+                      const isDone = p.st === 'Finished'  
                       if (!isDone) return <span className="modal-kpi-sub">Kondisi Terkini</span>;
                       const rawD = sisa(p.akd);
                       const isDelayed = rawD !== null && rawD < 0;
-                      const isOnTrack = p.st.includes('ON TRACK') || (!isDelayed && rawD !== null && rawD >= 0);
-                      if (isDelayed) return <span className="modal-kpi-sub" style={{ color: '#f97316', fontWeight: 700 }}>Done (Delayed)</span>;
-                      if (isOnTrack) return <span className="modal-kpi-sub" style={{ color: '#10b981', fontWeight: 700 }}>Done (On Track)</span>;
-                      return <span className="modal-kpi-sub" style={{ color: '#2563eb', fontWeight: 700 }}>Done (Standard)</span>;
+                      const isOnTrack = p.st.includes('Ongoing') || (!isDelayed && rawD !== null && rawD >= 0);
+                      if (isDelayed) return <span className="modal-kpi-sub" style={{ color: '#f97316', fontWeight: 700 }}>Finished (Delayed)</span>;
+                      if (isOnTrack) return <span className="modal-kpi-sub" style={{ color: '#10b981', fontWeight: 700 }}>Finished (On time)</span>;
+                      return <span className="modal-kpi-sub" style={{ color: '#2563eb', fontWeight: 700 }}>Finished</span>;
                     })()}
                   </div>
 
@@ -3663,12 +4040,12 @@ export default function App() {
                     className="modal-kpi-card"
                     style={{
                       borderColor:
-                        ! (projects[selectedIdx].st === 'DONE' || projects[selectedIdx].st.startsWith('DONE') || projects[selectedIdx].st === 'SELESAI') &&
+                        ! (projects[selectedIdx].st === 'Finished') &&
                         sisa(projects[selectedIdx].akd) !== null && sisa(projects[selectedIdx].akd)! < 0
                           ? '#f87171'
                           : undefined,
                       background:
-                        ! (projects[selectedIdx].st === 'DONE' || projects[selectedIdx].st.startsWith('DONE') || projects[selectedIdx].st === 'SELESAI') &&
+                        ! (projects[selectedIdx].st === 'Finished') &&
                         sisa(projects[selectedIdx].akd) !== null && sisa(projects[selectedIdx].akd)! < 0
                           ? 'rgba(239, 68, 68, 0.05)'
                           : undefined
@@ -3680,7 +4057,7 @@ export default function App() {
                       style={{
                         fontSize: '13px',
                         color:
-                          ! (projects[selectedIdx].st === 'DONE' || projects[selectedIdx].st.startsWith('DONE') || projects[selectedIdx].st === 'SELESAI') &&
+                          ! (projects[selectedIdx].st === 'Finished') &&
                           sisa(projects[selectedIdx].akd) !== null && sisa(projects[selectedIdx].akd)! < 0
                             ? '#ef4444'
                             : 'inherit'
@@ -3691,7 +4068,7 @@ export default function App() {
                     <span className="modal-kpi-sub">
                       {(() => {
                         const rawD = sisa(projects[selectedIdx].akd);
-                        const isDone = projects[selectedIdx].st === 'DONE' || projects[selectedIdx].st.startsWith('DONE') || projects[selectedIdx].st === 'SELESAI';
+                        const isDone = projects[selectedIdx].st === 'Finished';
                         const d = isDone && rawD !== null && rawD < 0 ? 0 : rawD;
                         if (d === null) return '-';
                         if (d < 0) {
@@ -3720,11 +4097,61 @@ export default function App() {
 
                 <div className="g2x">
                   <div className="panel">
-                    <h2>Project identity</h2>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                      <h2 style={{ margin: 0 }}>Project identity</h2>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const p = projects[selectedIdx];
+                          setIdentityForm({
+                            n: p.n,
+                            wbs: p.wbs || '',
+                            pic: p.pic || getProjectPic(p.no),
+                            pem: p.pem,
+                            bamk: p.bamk,
+                            ak: p.ak,
+                            akt: formatIndoDate(p.akt),
+                            nv: p.nv
+                          });
+                          setIsIdentityEditOpen(true);
+                        }}
+                        style={{
+                          background: '#2563eb',
+                          color: '#ffffff',
+                          border: 'none',
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        Edit
+                      </button>
+                    </div>
+                   
+                    {identityToast && (                 
+                    <div className="status-feedback-banner">
+                      <Check size={14} />
+                      <span>{identityToast}</span>
+                    </div>
+                  )}
+
                     <div id="pid">
                       <div className="kv">
                         <b>Nama project</b>
                         <span>{projects[selectedIdx].n}</span>
+                      </div>
+                      <div className="kv">
+                        <b>Nomor WBS</b>
+                        <span>
+                          {projects[selectedIdx].wbs && projects[selectedIdx].wbs !== '—' && projects[selectedIdx].wbs !== '-'
+                            ? projects[selectedIdx].wbs
+                            : '-'}
+                        </span>
                       </div>
                       <div className="kv">
                         <b>PIC Proyek</b>
@@ -3747,13 +4174,13 @@ export default function App() {
                       <div className="kv">
                         <b>Akhir kontrak terkini</b>
                         <span style={{ fontWeight: 700, color: 'var(--ink)' }}>
-                          {projects[selectedIdx].akt}
+                          {formatIndoDate(projects[selectedIdx].akt)}
                         </span>
                       </div>
                       {/* Status keterlambatan / sisa hari terhadap akhir kontrak terkini */}
                       {(() => {
                         const rawD = sisa(projects[selectedIdx].akd);
-                        const isDone = projects[selectedIdx].st === 'DONE' || projects[selectedIdx].st.startsWith('DONE') || projects[selectedIdx].st === 'SELESAI';
+                        const isDone = projects[selectedIdx].st === 'Finished';
                         const d = isDone && rawD !== null && rawD < 0 ? 0 : rawD;
                         if (d === null) return null;
                         if (d < 0) {
@@ -3771,7 +4198,7 @@ export default function App() {
                                 <span>⚠️</span> Keterlambatan kontrak
                               </b>
                               <span style={{ color: '#b91c1c', fontWeight: 800 }}>
-                                Terlambat {-d} hari dari tanggal akhir kontrak terkini ({projects[selectedIdx].akt})
+                                Terlambat {-d} hari dari tanggal akhir kontrak terkini ({formatIndoDate(projects[selectedIdx].akt)})
                               </span>
                             </div>
                           );
@@ -3850,7 +4277,6 @@ export default function App() {
                               setEditSt(projects[selectedIdx].st);
                               setEditSit(projects[selectedIdx].sit);
                               setEditMit(projects[selectedIdx].mit);
-                              setEditLs(projects[selectedIdx].ls);
                               setEditNote('');
                               setStatusViewMode('edit');
                             }
@@ -3881,6 +4307,50 @@ export default function App() {
                     <div id="psu">
                       {statusViewMode === 'edit' ? (
                         <form className="status-edit-form" onSubmit={handleSaveStatusUpdate}>
+                          <div
+                            style={{
+                              background: 'rgba(37, 99, 235, 0.05)',
+                              border: '1px solid rgba(37, 99, 235, 0.15)',
+                              borderRadius: '8px',
+                              padding: '8px 12px',
+                              fontSize: '11px',
+                              color: 'var(--ink)',
+                              marginBottom: '10px'
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                              <span style={{ fontWeight: 700, color: 'var(--accent)' }}>
+                                📊 Target: Sheet 'Detail Project Catatan'
+                              </span>
+                              {googleUser ? (
+                                <span style={{ color: '#059669', fontWeight: 600, fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
+                                  Terhubung: {googleUser.displayName || googleUser.email}
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={handleGoogleSignIn}
+                                  style={{
+                                    background: '#2563eb',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    padding: '3px 8px',
+                                    borderRadius: '5px',
+                                    fontSize: '10px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  Hubungkan Google
+                                </button>
+                              )}
+                            </div>
+                            <span style={{ color: 'var(--mute)', fontSize: '10.5px' }}>
+                              Hasil input akan otomatis mengisi <b>WBS</b> (Kolom A), <b>Tanggal</b> (Kolom C), <b>Problem</b> (Kolom I), <b>Action Plan</b> (Kolom J), dan <b>Catatan</b> (Kolom K).
+                            </span>
+                          </div>
+
                           <div className="status-form-group">
                             <label>Status Proyek</label>
                             <select
@@ -3897,35 +4367,22 @@ export default function App() {
                           </div>
 
                           <div className="status-form-group">
-                            <label>Situasi Proyek</label>
+                            <label>Problem</label>
                             <textarea
                               rows={3}
                               value={editSit}
                               onChange={e => setEditSit(e.target.value)}
-                              placeholder="Masukkan situasi dan perkembangan proyek terkini..."
-                              required
+                              placeholder="Masukkan problem / kendala proyek..."
                             />
                           </div>
 
                           <div className="status-form-group">
-                            <label>Mitigasi Hambatan / Risiko</label>
+                            <label>Action Plan</label>
                             <textarea
                               rows={2}
                               value={editMit}
                               onChange={e => setEditMit(e.target.value)}
-                              placeholder="Langkah penanganan atau mitigasi..."
-                              required
-                            />
-                          </div>
-
-                          <div className="status-form-group">
-                            <label>Learning Stop</label>
-                            <textarea
-                              rows={2}
-                              value={editLs}
-                              onChange={e => setEditLs(e.target.value)}
-                              placeholder="Catatan evaluasi atau learning stop..."
-                              required
+                              placeholder="Masukkan action plan / tindak lanjut..."
                             />
                           </div>
 
@@ -3949,7 +4406,7 @@ export default function App() {
                             </button>
                             <button type="submit" className="btn-form-save">
                               <Check size={14} />
-                              <span>Simpan Status Update</span>
+                              <span>Simpan & Sinkronkan ke Sheets</span>
                             </button>
                           </div>
                         </form>
@@ -3971,7 +4428,7 @@ export default function App() {
 
                           {currentHistory.map(entry => {
                             const isCurrentActive =
-                              projects[selectedIdx].st === entry.st &&
+                              projects[selectedIdx].st === normalizeStatus(entry.st) &&
                               projects[selectedIdx].sit === entry.sit &&
                               projects[selectedIdx].mit === entry.mit;
 
@@ -3991,7 +4448,7 @@ export default function App() {
                                         padding: '2px 8px'
                                       }}
                                     >
-                                      {entry.st}
+                                      {normalizeStatus(entry.st)}
                                     </span>
                                     <span className="status-history-time">
                                       <Clock size={11} />
@@ -4027,16 +4484,12 @@ export default function App() {
                                 )}
 
                                 <div className="status-history-detail">
-                                  <b>Situasi Proyek:</b>
+                                  <b>Problem:</b>
                                   <span>{entry.sit}</span>
                                 </div>
                                 <div className="status-history-detail">
-                                  <b>Mitigasi:</b>
+                                  <b>Action Plan:</b>
                                   <span>{entry.mit}</span>
-                                </div>
-                                <div className="status-history-detail">
-                                  <b>Learning Stop:</b>
-                                  <span>{entry.ls}</span>
                                 </div>
 
                                 <div className="status-history-actions">
@@ -4072,13 +4525,11 @@ export default function App() {
                         </div>
                       ) : (
                         <div className="tb">
-                          <h3>Situasi proyek</h3>
-                          <p>{projects[selectedIdx].sit}</p>
-                          <h3>Mitigasi</h3>
-                          <p>{projects[selectedIdx].mit}</p>
-                          <h3>Learning stop</h3>
-                          <p>{projects[selectedIdx].ls}</p>
-                        </div>
+                        <h3>Problem</h3>
+                        <p>{projects[selectedIdx].sit || '-'}</p>
+                        <h3>Action Plan</h3>
+                        <p>{projects[selectedIdx].mit || '-'}</p>
+                      </div>
                       )}
                     </div>
                   </div>
@@ -4098,6 +4549,122 @@ export default function App() {
                     )}
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {isIdentityEditOpen && (
+            <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs">
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl max-w-lg w-full flex flex-col overflow-hidden">
+                <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  <span className="font-bold text-base text-slate-800 dark:text-white">
+                    Edit Project Identity #{selectedIdx !== null ? projects[selectedIdx].no : ''}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsIdentityEditOpen(false)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <form onSubmit={handleSaveIdentityEdit} className="p-5 space-y-3.5 text-xs">
+                  <div>
+                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Nama Project</label>
+                    <textarea
+                      required
+                      rows={2}
+                      value={identityForm.n}
+                      onChange={e => setIdentityForm({ ...identityForm, n: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Nomor WBS</label>
+                    <input
+                      type="text"
+                      value={identityForm.wbs}
+                      onChange={e => setIdentityForm({ ...identityForm, wbs: e.target.value })}
+                      placeholder="Contoh: R/4.24.53.526 atau —"
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">PIC Proyek</label>
+                      <input
+                        type="text"
+                        value={identityForm.pic}
+                        onChange={e => setIdentityForm({ ...identityForm, pic: e.target.value })}
+                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Nilai Pekerjaan (Rp M)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={identityForm.nv}
+                        onChange={e => setIdentityForm({ ...identityForm, nv: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Pemilik</label>
+                    <input
+                      type="text"
+                      value={identityForm.pem}
+                      onChange={e => setIdentityForm({ ...identityForm, pem: e.target.value })}
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">BAMK</label>
+                    <input
+                      type="text"
+                      value={identityForm.bamk}
+                      onChange={e => setIdentityForm({ ...identityForm, bamk: e.target.value })}
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Akhir Kontrak (Awal)</label>
+                      <input
+                        type="text"
+                        value={identityForm.ak}
+                        onChange={e => setIdentityForm({ ...identityForm, ak: e.target.value })}
+                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Akhir Kontrak Terkini</label>
+                      <input
+                        type="text"
+                        value={identityForm.akt}
+                        onChange={e => setIdentityForm({ ...identityForm, akt: e.target.value })}
+                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setIsIdentityEditOpen(false)}
+                      className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-medium cursor-pointer"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Check size={13} />
+                      <span>Simpan Perubahan</span>
+                    </button>
+                  </div>
+                </form>
               </div>
             </div>
           )}

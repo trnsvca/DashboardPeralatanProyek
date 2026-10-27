@@ -3,21 +3,19 @@ import { ProjectItem, ProjectStatus } from '../types';
 export const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
 export const STATUS_COLORS: Record<ProjectStatus, string> = {
-  'ON TRACK': '#2e9e5b',
-  'AT RISK': '#e0a100',
-  'DELAYED': '#d9534f',
-  'SELESAI': '#7b8794',
-  'ACTIVE': '#3b82c4',
-  'LELANG': '#7c6bc4'
+  'Ongoing': '#2e9e5b',
+  'At risk': '#e0a100',
+  'Delayed': '#d9534f',
+  'Finished': '#7b8794',
+  'Closed': '#475569'
 };
 
 export const STATUS_BADGE_CLASSES: Record<ProjectStatus, string> = {
-  'ON TRACK': 'bg-emerald-600/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
-  'AT RISK': 'bg-amber-600/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
-  'DELAYED': 'bg-rose-600/15 text-rose-700 dark:text-rose-300 border-rose-500/30',
-  'SELESAI': 'bg-slate-600/15 text-slate-700 dark:text-slate-300 border-slate-500/30',
-  'ACTIVE': 'bg-blue-600/15 text-blue-700 dark:text-blue-300 border-blue-500/30',
-  'LELANG': 'bg-purple-600/15 text-purple-700 dark:text-purple-300 border-purple-500/30'
+  'Ongoing': 'bg-emerald-600/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
+  'At risk': 'bg-amber-600/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
+  'Delayed': 'bg-rose-600/15 text-rose-700 dark:text-rose-300 border-rose-500/30',
+  'Finished': 'bg-slate-600/15 text-slate-700 dark:text-slate-300 border-slate-500/30',
+  'Closed': 'bg-zinc-600/15 text-zinc-700 dark:text-zinc-300 border-zinc-500/30'
 };
 
 export function formatRupiah(value: number, short = true): string {
@@ -40,14 +38,12 @@ export function formatPercent(value: number | null): string {
 }
 
 export function normalizeStatus(raw: string): ProjectStatus {
-  const upper = (raw || '').trim().toUpperCase();
-  if (upper.startsWith('DONE') || upper.startsWith('SELESAI')) return 'SELESAI';
-  if (upper.includes('LELANG') || upper.includes('AANWIJZING') || upper.includes('PENAWARAN')) return 'LELANG';
-  if (upper === 'DELAYED') return 'DELAYED';
-  if (upper === 'AT RISK') return 'AT RISK';
-  if (upper === 'ON TRACK') return 'ON TRACK';
-  if (upper === 'ACTIVE') return 'ACTIVE';
-  return 'ON TRACK';
+  const u = (raw || '').trim().toUpperCase();
+  if (u === 'CLOSED') return 'Closed';
+  if (u.startsWith('FINISH') || u.startsWith('DONE') || u.startsWith('SELESAI')) return 'Finished';
+  if (u.startsWith('DELAY')) return 'Delayed';
+  if (u === 'AT RISK' || u.includes('RISK')) return 'At risk';
+  return 'Ongoing'; // ON GOING, ON TRACK, ACTIVE, ONGOING
 }
 
 const MONTH_LOOKUP: Record<string, number> = {

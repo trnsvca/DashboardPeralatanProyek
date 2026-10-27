@@ -915,7 +915,7 @@ select:focus {
 .kk-bar {
   height: 6px;
   border-radius: 999px;
-  background: var(--track);
+  background: #BFC6C4;
   margin-top: 10px;
   overflow: hidden;
 }
@@ -3216,7 +3216,7 @@ tbody tr[aria-selected="true"] td {
   margin-top: 14px;
 }
 
-.topbar-filters select {
+.topbar-filters > select {
   appearance: none;
   -webkit-appearance: none;
   cursor: pointer;
@@ -3233,10 +3233,10 @@ tbody tr[aria-selected="true"] td {
   box-shadow: none;
 }
 
-.topbar-filters select:hover { background-color: rgba(255, 255, 255, 0.2); }
-.topbar-filters select:focus { border-color: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.25); }
-.topbar-filters select option { color: #0f172a; background: #fff; }
-[data-theme="dark"] .topbar-filters select option { color: var(--ink); background: var(--card); }
+.topbar-filters > select:hover { background-color: rgba(255, 255, 255, 0.2); }
+.topbar-filters > select:focus { border-color: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.25); }
+.topbar-filters > select option { color: #0f172a; background: #fff; }
+[data-theme="dark"] .topbar-filters > select option { color: var(--ink); background: var(--card); }
 
 /* ===== DRAWER MENU ===== */
 @keyframes drawerFade { from { opacity: 0; } to { opacity: 1; } }
@@ -3341,6 +3341,310 @@ tbody tr[aria-selected="true"] td {
 }
 
 /* ===== TOPBAR DATE RANGE FILTER (Kalender 2 Rentang Awal & Akhir) ===== */
+/* ===== TOPBAR DATE RANGE & PERIODE FILTER (Sesuai Mockup) ===== */
+.period-filter-root {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  z-index: 100;
+}
+
+.period-trigger-container {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.period-trigger-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  padding: 6px 14px;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-height: 38px;
+}
+
+.period-trigger-btn:hover,
+.period-trigger-btn.open {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+.period-trigger-btn.has-filter {
+  background: rgba(59, 130, 246, 0.25);
+  border-color: #60a5fa;
+  color: #ffffff;
+}
+
+.period-trigger-icon {
+  color: #93c5fd;
+  flex-shrink: 0;
+}
+
+.period-trigger-chevron {
+  color: #cbd5e1;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.period-trigger-chevron.rotate {
+  transform: rotate(180deg);
+}
+
+.period-trigger-clear-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.period-trigger-clear-btn:hover {
+  background: #ef4444;
+  color: #ffffff;
+  transform: scale(1.05);
+}
+
+/* Popover Dropdown */
+.period-popover-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 320px;
+  background: var(--card, #1e293b);
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.2));
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
+  z-index: 1000;
+  animation: popoverFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes popoverFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Baris Selector Bulan & Tahun */
+.period-controls-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.period-select-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.period-select-box label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--muted, #94a3b8);
+  letter-spacing: 0.04em;
+}
+
+.period-select-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.period-select-wrap select {
+  width: 100%;
+  appearance: none;
+  background: var(--bg, #0f172a);
+  color: var(--fg, #f8fafc);
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.18));
+  border-radius: 8px;
+  padding: 7px 28px 7px 10px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.period-select-wrap select:hover,
+.period-select-wrap select:focus {
+  border-color: #3b82f6;
+}
+
+.period-select-arrow {
+  position: absolute;
+  right: 8px;
+  pointer-events: none;
+  color: var(--muted, #94a3b8);
+}
+
+/* Banner Bulan & Tahun Terpilih */
+.period-month-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 999px;
+  padding: 6px 14px;
+  margin: 10px 0 12px 0;
+  text-align: center;
+}
+
+.period-month-banner span {
+  font-size: 13px;
+  font-weight: 800;
+  color: #60a5fa;
+  letter-spacing: 0.02em;
+}
+
+/* Grid Kartu Minggu */
+.period-weeks-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.period-week-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 9px 11px;
+  background: var(--bg, #0f172a);
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.14));
+  border-radius: 10px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.18s ease;
+  text-align: left;
+}
+
+.period-week-card:hover {
+  border-color: #3b82f6;
+  background: rgba(255, 255, 255, 0.05);
+  transform: translateY(-1px);
+}
+
+.period-week-card.active {
+  background: rgba(59, 130, 246, 0.2);
+  border: 2px solid #3b82f6;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.25);
+}
+
+.week-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.week-card-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--fg, #f8fafc);
+}
+
+.period-week-card.active .week-card-title {
+  color: #93c5fd;
+}
+
+.week-card-check {
+  color: #60a5fa;
+  flex-shrink: 0;
+}
+
+.week-card-dates {
+  font-size: 11px;
+  color: var(--muted, #94a3b8);
+  margin-top: 2px;
+  font-weight: 500;
+}
+
+.period-week-card.active .week-card-dates {
+  color: #cbd5e1;
+  font-weight: 600;
+}
+
+/* Footer / Actions */
+.period-popover-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line, rgba(255, 255, 255, 0.1));
+}
+
+.period-action-link {
+  background: none;
+  border: none;
+  color: #60a5fa;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.period-action-link:hover {
+  background: rgba(59, 130, 246, 0.12);
+  text-decoration: underline;
+}
+
+.period-action-link.danger {
+  color: #f87171;
+}
+
+.period-action-link.danger:hover {
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.period-action-close-btn {
+  background: var(--bg, #0f172a);
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.2));
+  color: var(--fg, #f8fafc);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.period-action-close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Fallback topbar-date-group jika diperlukan */
 .topbar-date-group {
   display: inline-flex;
   align-items: center;
@@ -3351,74 +3655,6 @@ tbody tr[aria-selected="true"] td {
   padding: 4px 12px 4px 14px;
   box-sizing: border-box;
   min-height: 38px;
-}
-
-.date-filter-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.date-filter-label svg {
-  color: #93c5fd;
-}
-
-.date-inputs-wrapper {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: rgba(15, 23, 42, 0.4);
-  padding: 2px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-}
-
-.date-input-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.date-input-item label {
-  font-size: 11px;
-  font-weight: 700;
-  color: #94a3b8;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.date-native-input {
-  background: transparent;
-  border: none;
-  color: #ffffff;
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 3px 4px;
-  outline: none;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.date-native-input:hover,
-.date-native-input:focus {
-  color: #93c5fd;
-}
-
-.date-native-input::-webkit-calendar-picker-indicator {
-  filter: invert(1);
-  cursor: pointer;
-  opacity: 0.9;
-}
-
-.date-sep-arrow {
-  color: #94a3b8;
-  font-size: 11px;
-  font-weight: 700;
 }
 
 /* ===== STATISTICAL CONTRACT VALUE DISTRIBUTION (SEBARAN TINGKAT NILAI KONTRAK) ===== */
@@ -3893,3 +4129,270 @@ tbody tr[aria-selected="true"] td {
 #t3 #picBarGradHover stop  { stop-color: var(--t3-accent); }
 #t3 #hBarGrad stop         { stop-color: var(--t3-bar2); }
 #t3 #hBarGradHover stop    { stop-color: var(--t3-accent2-ink); }
+
+/* ========================================================
+   TAB 1 OVERVIEW: STATUS PROJECT ON GOING & CRITICAL TABLE
+   ======================================================== */
+.ov-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 14px;
+}
+
+@media (max-width: 640px) {
+  .ov-status-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ov-status-card {
+  background: var(--card, #ffffff);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  justifyContent: space-between;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+
+.ov-status-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.ov-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ov-status-num {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--ink);
+  line-height: 1.1;
+  margin: 6px 0 2px 0;
+}
+
+.ov-status-sub {
+  font-size: 11.5px;
+  color: var(--mute);
+  font-weight: 500;
+}
+
+.ov-status-link {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #2563eb;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  margin-top: 8px;
+  display: inline-block;
+  transition: opacity 0.15s ease;
+}
+
+.ov-status-link:hover {
+  text-decoration: underline;
+  opacity: 0.85;
+}
+
+.ov-seg-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--track, #e2e8f0);
+  gap: 2px;
+  margin: 14px 0 14px 0;
+}
+
+.ov-seg-item {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.ov-alert-box {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.22);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #ef4444;
+  font-size: 12.5px;
+  line-height: 1.4;
+  margin-bottom: 16px;
+}
+
+.ov-safe-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 10px;
+}
+
+.ov-safe-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.ov-safe-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 6px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  border-radius: 6px;
+}
+
+.ov-safe-item:hover {
+  background: var(--bg-app);
+}
+
+.ov-safe-name {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ov-safe-name .ov-status-dot {
+  margin-top: 5px;
+}
+
+.ov-safe-title {
+  font-weight: 500;
+  color: var(--ink);
+  line-height: 1.45;
+  white-space: normal;
+  word-break: break-word;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.ov-safe-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+@media (max-width: 540px) {
+  .ov-safe-item {
+    flex-direction: column;
+    gap: 6px;
+  }
+  .ov-safe-meta {
+    margin-left: 14px;
+  }
+}
+
+.ov-safe-pic {
+  font-size: 12px;
+  color: var(--mute);
+  white-space: nowrap;
+}
+
+.ov-safe-tag {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  padding: 2px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.ov-toggle-btn {
+  background: none;
+  border: none;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 8px 0 0 0;
+  text-align: left;
+  transition: opacity 0.15s ease;
+}
+
+.ov-toggle-btn:hover {
+  text-decoration: underline;
+  opacity: 0.85;
+}
+
+.ov-filter-btn {
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid var(--line);
+  background: var(--card, #ffffff);
+  color: var(--ink);
+}
+
+.ov-filter-btn.active {
+  background: var(--ink);
+  color: var(--card, #ffffff);
+  border-color: var(--ink);
+}
+
+/* Perbaikan hover & aktif kartu minggu (W - 1, W - 2, dst) */
+.period-week-card:hover {
+  background: #1e3a8a;
+  border-color: #60a5fa;
+}
+.period-week-card:hover .week-card-title { color: #ffffff; }
+.period-week-card:hover .week-card-dates { color: #bfdbfe; }
+
+.period-week-card.active,
+.period-week-card.active:hover {
+  background: #2563eb;
+  border: 2px solid #93c5fd;
+  box-shadow: 0 0 12px rgba(37, 99, 235, 0.35);
+}
+.period-week-card.active .week-card-title,
+.period-week-card.active:hover .week-card-title { color: #ffffff; }
+.period-week-card.active .week-card-dates,
+.period-week-card.active:hover .week-card-dates { color: #dbeafe; }
+.period-week-card.active .week-card-check { color: #ffffff; }
+
+/* Select Bulan/Tahun di popover Periode */
+.period-select-wrap select:hover,
+.period-select-wrap select:focus {
+  background-color: #1e293b;
+  color: #ffffff;
+  border-color: #60a5fa;
+  box-shadow: none;
+}
+.period-select-wrap select.is-placeholder {
+  color: #94a3b8;
+  font-weight: 500;
+}
+.period-select-wrap select.is-placeholder:hover,
+.period-select-wrap select.is-placeholder:focus {
+  color: #cbd5e1;
+}
+.period-action-link:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

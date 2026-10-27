@@ -41,11 +41,11 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
   // Calculate metrics
   const totalValue = filtered.reduce((acc, p) => acc + (p.v || 0), 0);
-  const completedProjects = filtered.filter(p => p.s === 'SELESAI').length;
-  const atRiskDelayed = filtered.filter(p => p.s === 'AT RISK' || p.s === 'DELAYED');
+  const completedProjects = filtered.filter(p => p.s === 'Finished' || p.s === 'Closed').length;
+  const atRiskDelayed = filtered.filter(p => p.s === 'At risk' || p.s === 'Delayed');
   const atRiskDelayedValue = atRiskDelayed.reduce((acc, p) => acc + (p.v || 0), 0);
-  const pipelineProjects = filtered.filter(p => p.s === 'ACTIVE' || p.s === 'LELANG');
-  const pipelineValue = pipelineProjects.reduce((acc, p) => acc + (p.v || 0), 0);
+  const ongoingProjects = filtered.filter(p => p.s === 'Ongoing');
+  const ongoingValue = ongoingProjects.reduce((acc, p) => acc + (p.v || 0), 0);
 
   const lastIdx = aggregate.R.length - 1;
   const currentPlan = aggregate.P[lastIdx];
@@ -54,12 +54,11 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
   // Status breakdown for donut
   const statusValues: { status: ProjectStatus; label: string; value: number; count: number; color: string }[] = [
-    { status: 'ON TRACK', label: 'ON TRACK', value: 0, count: 0, color: STATUS_COLORS['ON TRACK'] },
-    { status: 'AT RISK', label: 'AT RISK', value: 0, count: 0, color: STATUS_COLORS['AT RISK'] },
-    { status: 'DELAYED', label: 'DELAYED', value: 0, count: 0, color: STATUS_COLORS['DELAYED'] },
-    { status: 'SELESAI', label: 'SELESAI', value: 0, count: 0, color: STATUS_COLORS['SELESAI'] },
-    { status: 'ACTIVE', label: 'ACTIVE', value: 0, count: 0, color: STATUS_COLORS['ACTIVE'] },
-    { status: 'LELANG', label: 'LELANG', value: 0, count: 0, color: STATUS_COLORS['LELANG'] },
+    { status: 'Ongoing', label: 'Ongoing', value: 0, count: 0, color: STATUS_COLORS['Ongoing'] },
+    { status: 'At risk', label: 'At risk', value: 0, count: 0, color: STATUS_COLORS['At risk'] },
+    { status: 'Delayed', label: 'Delayed', value: 0, count: 0, color: STATUS_COLORS['Delayed'] },
+    { status: 'Finished', label: 'Finished', value: 0, count: 0, color: STATUS_COLORS['Finished'] },
+    { status: 'Closed', label: 'Closed', value: 0, count: 0, color: STATUS_COLORS['Closed'] },
   ];
 
   filtered.forEach(p => {
@@ -84,7 +83,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
   // Projects with deviations (ongoing, non-completed)
   const deviationProjects = filtered
-    .filter(p => p.dv != null && p.s !== 'SELESAI')
+    .filter(p => p.dv != null && p.s !== 'Finished' && p.s !== 'Closed')
     .sort((a, b) => (a.dv ?? 0) - (b.dv ?? 0));
 
   // Unique owners for filter
@@ -103,12 +102,11 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-blue-500"
         >
           <option value="">Semua Status ({projects.length})</option>
-          <option value="ON TRACK">ON TRACK</option>
-          <option value="AT RISK">AT RISK</option>
-          <option value="DELAYED">DELAYED</option>
-          <option value="SELESAI">SELESAI / DONE</option>
-          <option value="ACTIVE">ACTIVE</option>
-          <option value="LELANG">LELANG / AANWIJZING</option>
+          <option value="Ongoing">Ongoing</option>
+          <option value="Delayed">Delayed</option>
+          <option value="At risk">At risk</option>
+          <option value="Finished">Finished</option>
+          <option value="Closed">Closed</option>
         </select>
 
         <select
@@ -174,10 +172,10 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           icon={<AlertTriangle className="w-4 h-4" />}
         />
         <KpiCard
-          title="Pipeline (Active + Lelang)"
+          title="Proyek Ongoing"
           sourceId="S3"
-          value={pipelineProjects.length}
-          subtitle={`Nilai ${formatRupiah(pipelineValue, true)}`}
+          value={ongoingProjects.length}
+          subtitle={`Nilai ${formatRupiah(ongoingValue, true)}`}
           icon={<Layers className="w-4 h-4" />}
         />
       </div>

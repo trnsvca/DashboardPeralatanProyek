@@ -1,4 +1,4 @@
-export type ProjectStatus = 'ON TRACK' | 'AT RISK' | 'DELAYED' | 'SELESAI' | 'ACTIVE' | 'LELANG';
+export type ProjectStatus = 'Ongoing' | 'Delayed' | 'At risk' | 'Finished' | 'Closed';
 
 export interface ProjectItem {
   n: number; // No
@@ -47,7 +47,7 @@ export interface FilterState {
   search: string;
 }
 
-export type DocumentStatus = 'ADA' | 'PROSES' | 'BELUM' | 'TIDAK_DIPERLUKAN';
+export type DocumentStatus = 'ADA' | 'PROSES' | 'BELUM' | 'TIDAK_DIPERLUKAN' | 'DIVISI';
 
 export interface ContractDocumentRow {
   id: number;

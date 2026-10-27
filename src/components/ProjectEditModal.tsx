@@ -40,8 +40,8 @@ export const ProjectEditModal: React.FC<ProjectEditModalProps> = ({
         pl: 0.5,
         rl: 0.45,
         dv: -0.05,
-        st: 'ON TRACK',
-        s: 'ON TRACK',
+        st: 'Ongoing',
+        s: 'Ongoing',
         si: '',
         mi: '',
         ls: ''
@@ -62,7 +62,7 @@ export const ProjectEditModal: React.FC<ProjectEditModalProps> = ({
       dvNum = Number((rlNum - plNum).toFixed(4));
     }
 
-    const normStatus = normalizeStatus(formData.st || 'ON TRACK');
+    const normStatus = normalizeStatus(formData.st || 'Ongoing');
 
     const finalItem: ProjectItem = {
       n: formData.n || nextNo,
@@ -78,7 +78,7 @@ export const ProjectEditModal: React.FC<ProjectEditModalProps> = ({
       pl: plNum,
       rl: rlNum,
       dv: dvNum,
-      st: formData.st || 'ON TRACK',
+      st: normStatus,
       s: normStatus,
       si: formData.si || '-',
       mi: formData.mi || '-',
@@ -177,19 +177,18 @@ export const ProjectEditModal: React.FC<ProjectEditModalProps> = ({
                 Status Proyek
               </label>
               <select
-                value={formData.st || 'ON TRACK'}
+                value={formData.st || 'Ongoing'}
                 onChange={e => {
                   const s = e.target.value;
                   setFormData({ ...formData, st: s, s: normalizeStatus(s) });
                 }}
                 className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium"
               >
-                <option value="ON TRACK">ON TRACK</option>
-                <option value="AT RISK">AT RISK</option>
-                <option value="DELAYED">DELAYED</option>
-                <option value="DONE">DONE / SELESAI</option>
-                <option value="ACTIVE">ACTIVE (PO/SP3 Release)</option>
-                <option value="LELANG / AANWIJZING">LELANG / AANWIJZING</option>
+                <option value="Ongoing">Ongoing</option>
+                <option value="Delayed">Delayed</option>
+                <option value="At risk">At risk</option>
+                <option value="Finished">Finished</option>
+                <option value="Closed">Closed</option>
               </select>
             </div>
           </div>
