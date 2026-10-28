@@ -2115,13 +2115,13 @@ export default function App() {
   // Tab 1 At risk   & Delayed
   const homeCriticalList = useMemo(() => {
     return homeList
-      .filter(x => x.m.st === 'At risk' || x.m.st === 'Delayed')
+      .filter(x => isAtRiskStatus(x.m.st) || isDelayedStatus(x.m.st))
       .sort((a, b) => {
         const dvA = (a.m.rl ?? 0) - (a.m.pl ?? 0);
         const dvB = (b.m.rl ?? 0) - (b.m.pl ?? 0);
         return dvA - dvB;
       });
-  }, [homeList]);
+  }, [homeList, isAtRiskStatus, isDelayedStatus]);
 
   const critDelayedCount = useMemo(() => homeCriticalList.filter(x => isDelayedStatus(x.m.st)).length, [homeCriticalList, isDelayedStatus]);
   const critAtRiskCount = useMemo(() => homeCriticalList.filter(x => isAtRiskStatus(x.m.st)).length, [homeCriticalList, isAtRiskStatus]);
