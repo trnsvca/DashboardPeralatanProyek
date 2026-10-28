@@ -8,9 +8,10 @@ export interface StatusUpdatePayload {
   no: number;
   wbs?: string;
   tanggal: string; // YYYY-MM-DD
-  problem: string;
-  actionPlan: string;
-  catatan?: string;
+  status: string; // Kolom H
+  problem: string; // Kolom I
+  actionPlan: string; // Kolom J
+  catatan?: string; // Kolom K
 }
 
 export async function saveStatusUpdate(
@@ -25,6 +26,7 @@ export async function saveStatusUpdate(
       {
         wbs: payload.wbs || '—',
         tanggal: payload.tanggal,
+        status: payload.status,
         problem: payload.problem,
         actionPlan: payload.actionPlan,
         catatan: payload.catatan

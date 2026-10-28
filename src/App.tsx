@@ -1,4 +1,5 @@
 import {
+  deleteStatusRowFromSheet,
   initAuth,
   googleSignIn,
   googleSignOut,
@@ -2235,7 +2236,7 @@ export default function App() {
       st: editSt,
       sit: editSit.trim(),
       mit: editMit.trim(),
-      note: editNote.trim() || 'Pembaruan Problem & Action Plan',
+      note: editNote.trim(),
       author: authorName
     };
 
@@ -2290,6 +2291,7 @@ export default function App() {
         no: p.no,
         wbs: p.wbs && p.wbs !== '—' && p.wbs !== '-' ? p.wbs : (p.wbs || '—'),
         tanggal: todayIso,
+        status: editSt,
         problem: newEntry.sit,
         actionPlan: newEntry.mit,
         catatan: newEntry.note
@@ -2339,6 +2341,7 @@ export default function App() {
     const p = projects[selectedIdx];
 
     const currentList = statusHistory[p.no] || currentHistory;
+    const entryToDelete = currentList.find(item => item.id === entryId);
     const updatedList = currentList.filter(item => item.id !== entryId);
 
     // 1. Update status history state
@@ -2378,6 +2381,35 @@ export default function App() {
 
     setStatusToast('Catatan status update berhasil dihapus dari riwayat.');
     setTimeout(() => setStatusToast(null), 3000);
+
+    // Sinkronkan penghapusan ke Google Sheets (baseline tidak ada di sheet)
+if (entryToDelete && !entryToDelete.id.startsWith('baseline-')) {
+  (async () => {
+    const token = await getAccessToken();
+    if (!token) {
+      setStatusToast('Riwayat dihapus di web, tapi belum login Google, jadi baris di Sheets belum ikut terhapus.');
+      setTimeout(() => setStatusToast(null), 5000);
+      return;
+    }
+    const res = await deleteStatusRowFromSheet(
+      {
+        wbs: p.wbs || '—',
+        status: entryToDelete.st,
+        problem: entryToDelete.sit,
+        actionPlan: entryToDelete.mit
+      },
+      token
+    );
+    if (res.ok) {
+      setStatusToast(`Riwayat dihapus, baris ${res.deletedRow} di Sheets juga terhapus.`);
+    } else if (res.notFound) {
+      setStatusToast('Riwayat dihapus di web, tapi baris yang cocok tidak ditemukan di Sheets (mungkin sudah dihapus manual).');
+    } else {
+      setStatusToast(`Riwayat dihapus di web, tapi gagal hapus di Sheets: ${res.error}`);
+    }
+    setTimeout(() => setStatusToast(null), 5000);
+  })();
+}
   };
 
   const stc = (s: string) => SC[normalizeStatus(s)] || '#94a3b8';
@@ -4347,7 +4379,7 @@ export default function App() {
                               )}
                             </div>
                             <span style={{ color: 'var(--mute)', fontSize: '10.5px' }}>
-                              Hasil input akan otomatis mengisi <b>WBS</b> (Kolom A), <b>Tanggal</b> (Kolom C), <b>Problem</b> (Kolom I), <b>Action Plan</b> (Kolom J), dan <b>Catatan</b> (Kolom K).
+                              Hasil input akan otomatis mengisi <b>WBS</b> (Kolom A), <b>Tanggal</b> (Kolom C), <b>Status</b> (Kolom H), <b>Problem</b> (Kolom I), <b>Action Plan</b> (Kolom J), dan <b>Catatan</b> (Kolom K).
                             </span>
                           </div>
 

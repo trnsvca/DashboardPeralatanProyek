@@ -77,20 +77,72 @@ export const googleSignOut = async () => {
 export interface SheetUpdateData {
   wbs: string;
   tanggal: string; // YYYY-MM-DD or DD/MM/YYYY
-  problem: string;
-  actionPlan: string;
-  catatan?: string;
+  status: string; // Kolom I
+  problem: string; // Kolom J
+  actionPlan: string; // Kolom K
+  catatan?: string; // Kolom L
 }
 
 /**
  * Writes or appends status update to the 'Detail Project Catatan' sheet:
  * - Nomor WBS = Kolom A (A2:A)
  * - Tanggal Update = Kolom C (C2:C)
+ * - Status = Kolom H (H2:H)
  * - Problem = Kolom I (I2:I)
  * - Action Plan = Kolom J (J2:J)
  * - Catatan Perubahan (opsional) = Kolom K (K2:K)
- * Preserves formula columns (B, D, E, F, G, H).
+ * Preserves formula columns (B, D, E, F, G).
  */
+let cachedSheetId: number | null = null;
+
+async function getSheetId(accessToken: string): Promise<number> {
+  if (cachedSheetId !== null) return cachedSheetId;
+  const res = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}?fields=sheets.properties(sheetId,title)`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!res.ok) throw new Error(`Gagal membaca info sheet (${res.status})`);
+  const json = await res.json();
+  const s = json.sheets?.find((x: any) => x.properties.title === SHEET_NAME);
+  if (!s) throw new Error(`Sheet '${SHEET_NAME}' tidak ditemukan`);
+  cachedSheetId = s.properties.sheetId as number;
+  return cachedSheetId;
+}
+
+async function insertRowAfter(afterRow: number, accessToken: string) {
+  const sheetId = await getSheetId(accessToken);
+  const res = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}:batchUpdate`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        requests: [
+          {
+            insertDimension: {
+              range: { sheetId, dimension: 'ROWS', startIndex: afterRow, endIndex: afterRow + 1 },
+              inheritFromBefore: true
+            }
+          },
+          {
+            copyPaste: {
+              source: { sheetId, startRowIndex: afterRow - 1, endRowIndex: afterRow, startColumnIndex: 1, endColumnIndex: 8 },
+              destination: { sheetId, startRowIndex: afterRow, endRowIndex: afterRow + 1, startColumnIndex: 1, endColumnIndex: 8 },
+              pasteType: 'PASTE_FORMULA'
+            }
+          }
+        ]
+      })
+    }
+  );
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error?.message || `Gagal menyisipkan baris (${res.status})`);
+  }
+}
 export async function writeStatusUpdateToSheet(
   data: SheetUpdateData,
   accessToken: string
@@ -99,7 +151,7 @@ export async function writeStatusUpdateToSheet(
     // 1. Fetch current rows in A2:C to find the target row
     const getRangeUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/'${encodeURIComponent(
       SHEET_NAME
-    )}'!A2:C200`;
+    )}'!A2:C`;
 
     const getRes = await fetch(getRangeUrl, {
       headers: { Authorization: `Bearer ${accessToken}` }
@@ -113,37 +165,35 @@ export async function writeStatusUpdateToSheet(
     const getData = await getRes.json();
     const rows: string[][] = getData.values || [];
 
-    // Find the best target row:
-    // Check if row 2 has matching WBS and empty Tanggal (initial placeholder row)
-    let targetRow = 2;
-    let found = false;
+    let placeholderRow = -1;
+let lastSameWbsRow = -1;
+let emptySlotRow = -1;
 
-    // Check if there is an empty row or matching row
-    for (let i = 0; i < rows.length; i++) {
-      const rowNum = i + 2;
-      const rowWbs = rows[i] ? (rows[i][0] || '').trim() : '';
-      const rowDate = rows[i] && rows[i].length > 2 ? (rows[i][2] || '').trim() : '';
+for (let i = 0; i < rows.length; i++) {
+  const rowNum = i + 2;
+  const rowWbs = (rows[i]?.[0] || '').trim();
+  const rowDate = (rows[i]?.[2] || '').trim();
 
-      // If row has matching WBS and date is empty, use it
-      if (rowWbs === data.wbs && !rowDate) {
-        targetRow = rowNum;
-        found = true;
-        break;
-      }
+  if (rowWbs === data.wbs) {
+    lastSameWbsRow = rowNum;
+    if (!rowDate && placeholderRow === -1) placeholderRow = rowNum;
+  }
+  if (!rowWbs && !rowDate && emptySlotRow === -1) emptySlotRow = rowNum;
+}
 
-      // If row has both WBS and date empty, this is the next free slot
-      if (!rowWbs && !rowDate) {
-        targetRow = rowNum;
-        found = true;
-        break;
-      }
-    }
+let targetRow: number;
+if (placeholderRow !== -1) {
+  targetRow = placeholderRow;
+} else if (lastSameWbsRow !== -1) {
+  targetRow = lastSameWbsRow + 1;
+  await insertRowAfter(lastSameWbsRow, accessToken);
+} else if (emptySlotRow !== -1) {
+  targetRow = emptySlotRow;
+} else {
+  targetRow = rows.length + 2;
+}
 
-    if (!found) {
-      targetRow = rows.length + 2;
-    }
-
-    // 2. Batch update target row without overwriting formula columns B, D, E, F, G, H
+    // 2. Batch update target row: WBS (A), Tanggal (C), Status (H), Problem (I), Action Plan (J), Catatan (K)
     const updateUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values:batchUpdate`;
 
     const batchBody = {
@@ -158,8 +208,8 @@ export async function writeStatusUpdateToSheet(
           values: [[data.tanggal]]
         },
         {
-          range: `'${SHEET_NAME}'!I${targetRow}:K${targetRow}`,
-          values: [[data.problem, data.actionPlan, data.catatan || '']]
+          range: `'${SHEET_NAME}'!I${targetRow}:L${targetRow}`,
+          values: [[data.status, data.problem, data.actionPlan, data.catatan || '']]
         }
       ]
     };
@@ -182,5 +232,67 @@ export async function writeStatusUpdateToSheet(
   } catch (err: any) {
     console.error('writeStatusUpdateToSheet error:', err);
     return { ok: false, targetRow: 0, error: err.message || 'Terjadi kesalahan jaringan' };
+  }
+}
+
+export async function deleteStatusRowFromSheet(
+  data: { wbs: string; status: string; problem: string; actionPlan: string },
+  accessToken: string
+): Promise<{ ok: boolean; deletedRow?: number; notFound?: boolean; error?: string }> {
+  try {
+    const norm = (s?: string) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+    const getUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/'${encodeURIComponent(
+      SHEET_NAME
+    )}'!A2:L`;
+    const getRes = await fetch(getUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (!getRes.ok) throw new Error(`Gagal membaca sheet (${getRes.status})`);
+    const rows: string[][] = (await getRes.json()).values || [];
+
+    // Cari dari bawah (data terbaru dulu): A=WBS, I=Status, J=Problem, K=Action Plan
+    let targetRow = -1;
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const r = rows[i] || [];
+      if (
+        norm(r[0]) === norm(data.wbs) &&
+        norm(r[8]) === norm(data.status) &&
+        norm(r[9]) === norm(data.problem) &&
+        norm(r[10]) === norm(data.actionPlan)
+      ) {
+        targetRow = i + 2;
+        break;
+      }
+    }
+    if (targetRow === -1) return { ok: false, notFound: true };
+
+    const sheetId = await getSheetId(accessToken);
+    const delRes = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}:batchUpdate`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          requests: [
+            {
+              deleteDimension: {
+                range: { sheetId, dimension: 'ROWS', startIndex: targetRow - 1, endIndex: targetRow }
+              }
+            }
+          ]
+        })
+      }
+    );
+    if (!delRes.ok) {
+      const e = await delRes.json().catch(() => ({}));
+      throw new Error(e.error?.message || `Gagal menghapus baris (${delRes.status})`);
+    }
+    return { ok: true, deletedRow: targetRow };
+  } catch (err: any) {
+    return { ok: false, error: err.message || 'Terjadi kesalahan jaringan' };
   }
 }

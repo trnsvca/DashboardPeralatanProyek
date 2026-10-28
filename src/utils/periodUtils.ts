@@ -16,51 +16,71 @@ export interface PeriodWeek {
   endDay: number;
   startDateStr: string; // YYYY-MM-DD
   endDateStr: string;   // YYYY-MM-DD
-  shortLabel: string;   // e.g. "(1 - 4 Okt)"
-  label: string;        // e.g. "W-90 (1 - 4 Okt 2026)"
+  shortLabel: string;   // e.g. "(26 Jan - 1 Feb)"
+  label: string;        // e.g. "W-5 (26 Jan - 1 Feb 2026)"
 }
 
-// Generate weeks grouped by "YYYY-MM"
-// Start year is 2023 as requested by the user
+// Generate continuous Monday-to-Sunday weeks grouped by the month of Monday, restarting weekNum to 1 every year
 export function generateAllWeeks(startYear = 2023, endYear = 2027): Record<string, PeriodWeek[]> {
   const weeksByMonth: Record<string, PeriodWeek[]> = {};
 
-  for (let y = startYear; y <= endYear; y++) {
-    let yearWeek = 1;
-    for (let m = 0; m < 12; m++) {
-      const key = `${y}-${String(m + 1).padStart(2, '0')}`;
-      weeksByMonth[key] = [];
-      const daysInMonth = new Date(y, m + 1, 0).getDate();
-      let startDay = 1;
+  let curr = new Date(startYear, 0, 1);
+  const day = curr.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  curr.setDate(curr.getDate() + diffToMonday);
 
-      while (startDay <= daysInMonth) {
-        const d = new Date(y, m, startDay);
-        const dayOfWeek = d.getDay(); // 0 is Sunday, 1 is Monday...
-        // Cut-off Sunday (Hari Minggu) sesuai kalender nasional
-        const daysToSunday = dayOfWeek === 0 ? 0 : (7 - dayOfWeek);
-        const endDay = Math.min(daysInMonth, startDay + daysToSunday);
+  let currentYear = curr.getFullYear();
+  let weekNum = 1;
+  const endDateLimit = new Date(endYear, 11, 31);
 
-        const startDateStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(startDay).padStart(2, '0')}`;
-        const endDateStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`;
-        const shortLabel = `(${startDay} - ${endDay} ${MONTH_SHORT_ID[m]})`;
-        const label = `W-${yearWeek} (${startDay} - ${endDay} ${MONTH_SHORT_ID[m]} ${y})`;
+  while (curr <= endDateLimit) {
+    const monday = new Date(curr);
+    const sunday = new Date(curr);
+    sunday.setDate(monday.getDate() + 6);
 
-        weeksByMonth[key].push({
-          weekNum: yearWeek,
-          year: y,
-          monthIdx: m,
-          startDay,
-          endDay,
-          startDateStr,
-          endDateStr,
-          shortLabel,
-          label
-        });
+    const y = monday.getFullYear();
+    const m = monday.getMonth(); // 0-11
 
-        yearWeek++;
-        startDay = endDay + 1;
-      }
+    if (y !== currentYear) {
+      currentYear = y;
+      weekNum = 1;
     }
+
+    const monthKey = `${y}-${String(m + 1).padStart(2, '0')}`;
+
+    if (!weeksByMonth[monthKey]) {
+      weeksByMonth[monthKey] = [];
+    }
+
+    const startDay = monday.getDate();
+    const endDay = sunday.getDate();
+    const startMonthName = MONTH_SHORT_ID[monday.getMonth()];
+    const endMonthName = MONTH_SHORT_ID[sunday.getMonth()];
+
+    const startDateStr = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
+    const endDateStr = `${sunday.getFullYear()}-${String(sunday.getMonth() + 1).padStart(2, '0')}-${String(sunday.getDate()).padStart(2, '0')}`;
+
+    const sameMonth = monday.getMonth() === sunday.getMonth();
+    const shortLabel = sameMonth
+      ? `(${startDay} - ${endDay} ${startMonthName})`
+      : `(${startDay} ${startMonthName} - ${endDay} ${endMonthName})`;
+    
+    const label = `W-${weekNum} ${shortLabel} ${y}`;
+
+    weeksByMonth[monthKey].push({
+      weekNum,
+      year: y,
+      monthIdx: m,
+      startDay,
+      endDay,
+      startDateStr,
+      endDateStr,
+      shortLabel,
+      label
+    });
+
+    weekNum++;
+    curr.setDate(curr.getDate() + 7);
   }
 
   return weeksByMonth;
