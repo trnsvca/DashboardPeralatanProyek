@@ -52,8 +52,10 @@ import {
   PinOff,
   Calendar,
   CheckCircle2,
-  Activity
+  Activity,
+  CreditCard
 } from 'lucide-react';
+import { PaymentTracking } from './components/PaymentTracking';
 import { PeriodFilter } from './components/PeriodFilter';
   import { normalizeStatus } from './utils/helpers';
    const isOngoingGroup = (g?: string) => (g ?? '').replace(/\s+/g, '').toUpperCase() === 'ONGOING';
@@ -1608,7 +1610,7 @@ function isProjectInDateRange(m: MasterProject, start: string, end: string): boo
 const NAV_ITEMS = [
   { id: 't1', title: 'Overview', sub: 'Ringkasan & KPI Portofolio', Icon: LayoutDashboard },
   { id: 't2', title: 'Detail Project', sub: 'Daftar Project & Status Update', Icon: FolderKanban },
-  { id: 't4', title: 'Kurva S', sub: 'Plan vs Realisasi Progres', Icon: TrendingUp },
+  { id: 't4', title: 'Tracking Pembayaran', sub: 'Tracking Pembayaran Kontrak', Icon: CreditCard },
   { id: 't3', title: 'Document Tracking', sub: 'Kelengkapan Dokumen Kontrak', Icon: FileCheck2 },
 ] as const;
 
@@ -1616,6 +1618,15 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'t1' | 't2' | 't4' | 't3'>('t1');
 
   const [googleUser, setGoogleUser] = useState<FirebaseUser | null>(null);
+  const [paymentFilter, setPaymentFilter] = useState<string>('ALL');
+  const [paymentSearch, setPaymentSearch] = useState<string>('');
+  const [paymentStatusMap, setPaymentStatusMap] = useState<Record<string, { status: string; dp: string; termin1: string; termin2: string; lunas: string }>>({});
+  const [editingPaymentProj, setEditingPaymentProj] = useState<MasterProject | null>(null);
+  const [editPayStatus, setEditPayStatus] = useState<string>('Proses Tagihan');
+  const [editDp, setEditDp] = useState<string>('Sudah');
+  const [editTermin1, setEditTermin1] = useState<string>('Proses');
+  const [editTermin2, setEditTermin2] = useState<string>('Belum');
+  const [editLunas, setEditLunas] = useState<string>('Belum');
 
   useEffect(() => {
     const unsub = initAuth(
@@ -1881,8 +1892,8 @@ export default function App() {
         wbs: rawWbs,
         st: rawSt,
         s: normalizeStatus(rawSt),
-        sit: up?.sit ?? idEdit.sit ?? m.sit,
-        mit: up?.mit ?? idEdit.mit ?? m.mit,
+        sit: up?.sit ?? idEdit.sit ?? '',
+        mit: up?.mit ?? idEdit.mit ?? '',
       };
     });
   }, [projectUpdates, projectIdentityEdits]);
@@ -2115,13 +2126,13 @@ export default function App() {
   // Tab 1 At risk   & Delayed
   const homeCriticalList = useMemo(() => {
     return homeList
-      .filter(x => isAtRiskStatus(x.m.st) || isDelayedStatus(x.m.st))
+      .filter(x => x.m.st === 'At risk' || x.m.st === 'Delayed')
       .sort((a, b) => {
         const dvA = (a.m.rl ?? 0) - (a.m.pl ?? 0);
         const dvB = (b.m.rl ?? 0) - (b.m.pl ?? 0);
         return dvA - dvB;
       });
-  }, [homeList, isAtRiskStatus, isDelayedStatus]);
+  }, [homeList]);
 
   const critDelayedCount = useMemo(() => homeCriticalList.filter(x => isDelayedStatus(x.m.st)).length, [homeCriticalList, isDelayedStatus]);
   const critAtRiskCount = useMemo(() => homeCriticalList.filter(x => isAtRiskStatus(x.m.st)).length, [homeCriticalList, isAtRiskStatus]);
@@ -2190,8 +2201,8 @@ export default function App() {
           return {
             ...entry,
             author: auth,
-            sit: M[selectedIdx]?.sit || '',
-            mit: M[selectedIdx]?.mit || ''
+            sit: '',
+            mit: ''
           };
         }
         return { ...entry, author: auth };
@@ -2202,8 +2213,8 @@ export default function App() {
         id: `baseline-${p.no}`,
         timestamp: 'Baseline Awal Kontrak',
         st: M[selectedIdx].st,
-        sit: M[selectedIdx].sit || '',
-        mit: M[selectedIdx].mit || '',
+        sit: '',
+        mit: '',
         note: 'Baseline status awal data BIMA',
         author: defaultPic
       }
@@ -2257,8 +2268,8 @@ export default function App() {
           id: `baseline-${p.no}`,
           timestamp: 'Baseline Awal Kontrak',
           st: M[selectedIdx].st,
-          sit: M[selectedIdx].sit,
-          mit: M[selectedIdx].mit,
+          sit: '',
+          mit: '',
           note: 'Baseline status awal data BIMA',
           author: authorName
         }
@@ -3584,121 +3595,21 @@ if (entryToDelete && !entryToDelete.id.startsWith('baseline-')) {
             </section>
           )}
 
-          {/* TAB 4: KURVA S */}
+                              {/* TAB 4: TRACKING PEMBAYARAN */}
           {activeTab === 't4' && (
-            <section id="t4">
-              <div className="panel">
-                <h2>Kurva S Agregat &amp; Individual</h2>
-                <div id="kinfo">
-                  {(() => {
-                    const isPort = kSel === 'p';
-                    const idx = isPort ? 0 : Number(kSel);
-                    const tag = isPort ? 'S10' : `S${Number(kSel) + 1}`;
-                    const d = isPort ? K.port : K.proj[idx];
-                    const p = d.p[cutoffMonthIdx] ?? 0;
-                    const r = d.r[cutoffMonthIdx] ?? 0;
-                    const deviasi = Number((r - p).toFixed(1));
-                    const totalNilai = K.nil.reduce((a, b) => a + b, 0);
-                    const nilai = isPort ? totalNilai : K.nil[idx];
-                    const bobot = isPort ? 100.0 : K.bob[idx];
-
-                    return (
-                      <>
-                        <div className="kinfo-card" style={{ borderTop: '3px solid #3b82f6' }}>
-                          <div className="kinfo-head">
-                            <span className="kinfo-title">Bobot Proyek</span>
-                          </div>
-                          <div className="kinfo-val">{f1(bobot)}%</div>
-                          <div className="kinfo-desc">Dari Total Kurva S</div>
-                          <div className="kk-bar" style={{ marginTop: 'auto' }}><i style={{ width: `${Math.min(100, bobot)}%`, background: '#3b82f6' }} /></div>
-                        </div>
-
-                        <div className="kinfo-card" style={{ borderTop: '3px solid #10b981' }}>
-                          <div className="kinfo-head">
-                            <span className="kinfo-title">Nilai Pekerjaan</span>
-                          </div>
-                          <div className="kinfo-val">Rp{f1(nilai)} M</div>
-                          <div className="kinfo-desc">Total Alokasi Nilai</div>
-                          <div className="kk-bar" style={{ marginTop: 'auto' }}><i style={{ width: '75%', background: '#10b981' }} /></div>
-                        </div>
-
-                        <div className="kinfo-card" style={{ borderTop: '3px solid #f59e0b' }}>
-                          <div className="kinfo-head">
-                            <span className="kinfo-title">Realisasi</span>
-                          </div>
-                          <div className="kinfo-val">{f1(r)}%</div>
-                          <div className="kinfo-desc">Rencana {f1(p)}% (Per {cutoffMonthLabel})</div>
-                          <div className="kk-bar" style={{ marginTop: 'auto' }}><i style={{ width: `${Math.min(100, r)}%`, background: '#f59e0b' }} /></div>
-                        </div>
-
-                        <div className="kinfo-card" style={{ borderTop: '3px solid #8b5cf6' }}>
-                          <div className="kinfo-head">
-                            <span className="kinfo-title">Deviasi</span>
-                          </div>
-                          <div className="kinfo-val" style={{ color: deviasi < -3 ? '#ef4444' : deviasi < 0 ? '#f59e0b' : '#10b981' }}>
-                            {deviasi > 0 ? `+${f1(deviasi)}%` : `${f1(deviasi)}%`}
-                          </div>
-                          <div
-                            className="kinfo-desc"
-                            style={{
-                              color: deviasi < -3 ? '#ef4444' : deviasi < 0 ? '#f59e0b' : '#10b981',
-                              fontWeight: 600
-                            }}
-                          >
-                            Per {cutoffMonthLabel}
-                          </div>
-                          <div className="kk-bar" style={{ marginTop: 'auto' }}>
-                            <i style={{ width: `${Math.min(100, Math.max(15, Math.abs(deviasi) * 5))}%`, background: deviasi < 0 ? '#ef4444' : '#10b981' }} />
-                          </div>
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-                <div id="kc">
-                  {renderKurvaSvg(kSel === 'p' ? K.port : K.proj[Number(kSel)])}
-                </div>
-              </div>
-
-              <div className="panel">
-                <h2>Cek Sinkron: Progres Master Vs Kurva S (Posisi {cutoffMonthLabel})</h2>
-                <div className="scroll">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Project</th>
-                        <th>Realisasi Master</th>
-                        <th>Realisasi Kurva S ({cutoffMonthLabel})</th>
-                        <th>Selisih (%)</th>
-                      </tr>
-                    </thead>
-                    <tbody id="kcmp">
-                      {Object.entries(MAP).map(([a, k]) => {
-                        const idxA = Number(a);
-                        const idxK = Number(k);
-                        const m = P[idxA]?.rl ?? 0;
-                        const c = K.proj[idxK].r[cutoffMonthIdx] ?? 0;
-                        const diff = Number((c - m).toFixed(1));
-
-                        return (
-                          <tr key={a}>
-                            <td>{P[idxA]?.n}</td>
-                            <td>{f1(m)}%</td>
-                            <td>{f1(c)}%</td>
-                            <td style={{ color: Math.abs(diff) > 3 ? 'var(--bad)' : 'inherit', fontWeight: '700' }}>
-                              {diff > 0 ? `+${f1(diff)}%` : `${f1(diff)}%`}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </section>
+            <PaymentTracking
+              projects={projects}
+              onOpenProjectDetail={(pNo) => {
+                const idx = projects.findIndex(p => p.no === pNo);
+                if (idx !== -1) {
+                  openDetailModal(idx);
+                }
+              }}
+              onOpenDocuments={() => pickTab('t3')}
+            />
           )}
 
-          {/* TAB 3: KELENGKAPAN DOKUMEN */}
+{/* TAB 3: KELENGKAPAN DOKUMEN */}
           {activeTab === 't3' && (
             <section id="t3">
 
@@ -4000,7 +3911,7 @@ if (entryToDelete && !entryToDelete.id.startsWith('baseline-')) {
                   <div className="modal-kpi-card">
                     <span className="modal-kpi-label">Target Plan</span>
                     <b className="modal-kpi-val" style={{ color: '#2563eb' }}>
-                      {projects[selectedIdx].pt}
+                    {projects[selectedIdx].pl == null ? '-' : f1(projects[selectedIdx].pl!) + '%'}
                     </b>
                     <span className="modal-kpi-sub">Rencana Kumulatif</span>
                   </div>
@@ -4008,7 +3919,7 @@ if (entryToDelete && !entryToDelete.id.startsWith('baseline-')) {
                   <div className="modal-kpi-card">
                     <span className="modal-kpi-label">Realisasi</span>
                     <b className="modal-kpi-val" style={{ color: '#10b981' }}>
-                      {projects[selectedIdx].rt}
+                      {projects[selectedIdx].rl == null ? '-' : f1(projects[selectedIdx].rl!) + '%'}
                     </b>
                     <span className="modal-kpi-sub">Progres Lapangan</span>
                   </div>
@@ -4379,7 +4290,7 @@ if (entryToDelete && !entryToDelete.id.startsWith('baseline-')) {
                               )}
                             </div>
                             <span style={{ color: 'var(--mute)', fontSize: '10.5px' }}>
-                              Hasil input akan otomatis mengisi <b>WBS</b> (Kolom A), <b>Tanggal</b> (Kolom C), <b>Status</b> (Kolom H), <b>Problem</b> (Kolom I), <b>Action Plan</b> (Kolom J), dan <b>Catatan</b> (Kolom K).
+                              Hasil input akan otomatis mengisi <b>WBS</b> (Kolom A), <b>Tanggal</b> (Kolom C), <b>Status</b> (Kolom I), <b>Problem</b> (Kolom J), <b>Action Plan</b> (Kolom K), dan <b>Catatan</b> (Kolom L).
                             </span>
                           </div>
 
