@@ -4060,9 +4060,9 @@ tbody tr[aria-selected="true"] td {
   background: transparent;
 }
 #t3 .hm .hrow {
-  grid-template-columns: 300px repeat(20, minmax(18px, 1fr)) 56px;
-  gap: 4px;
-  min-width: 1050px;
+grid-template-columns: 300px repeat(20, minmax(18px, 1fr));
+gap: 4px;
+min-width: 990px;
 
   padding: 7px 4px;
   border-bottom: 0;
@@ -4545,4 +4545,77 @@ tbody tr[aria-selected="true"] td {
 
 .pay-btn-detail:active {
   transform: translateY(0);
+}
+
+/* Payment Form Buttons (Batal & Simpan) */
+.pay-form-btn-cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  background: #ffffff;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pay-form-btn-cancel:hover {
+  background: #f8fafc;
+  color: #0f172a;
+  border-color: #94a3b8;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
+}
+
+.pay-form-btn-cancel:active {
+  transform: translateY(0);
+}
+
+.pay-form-btn-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 22px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.35);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pay-form-btn-save:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(5, 150, 105, 0.45);
+}
+
+.pay-form-btn-save:active {
+  transform: translateY(0);
+}
+
+[data-theme="dark"] .pay-form-btn-cancel {
+  background: #1e293b;
+  color: #cbd5e1;
+  border-color: #334155;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="dark"] .pay-form-btn-cancel:hover {
+  background: #273549;
+  color: #ffffff;
+  border-color: #475569;
+}
+
+[data-theme="dark"] .pay-form-btn-save {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
 }

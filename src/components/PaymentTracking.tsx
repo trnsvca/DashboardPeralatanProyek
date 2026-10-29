@@ -17,7 +17,9 @@ import {
   Layers,
   Building,
   UserCheck,
-  Eye
+  Eye,
+  X,
+  Check
 } from 'lucide-react';
 
 interface PaymentTrackingProps {
@@ -331,25 +333,26 @@ export const PaymentTracking: React.FC<PaymentTrackingProps> = ({
 
   // Helper styles based on status
   const getStatusChipClass = (status: string) => {
-    switch (status) {
-      case 'Proses tagihan': return 'chip-tag proses';
-      case 'Tertahan (dispute)': return 'chip-tag tertahan';
-      case 'Denda': return 'chip-tag denda';
-      case 'Menunggu BAST': return 'chip-tag bast';
-      case 'Lunas': return 'chip-tag lunas';
-      default: return 'chip-tag proses';
-    }
+    const s = (status || '').toLowerCase();
+    if (s.includes('lunas') || s.includes('paid')) return 'chip-tag lunas';
+    if (s.includes('tertahan') || s.includes('dispute')) return 'chip-tag tertahan';
+    if (s.includes('denda')) return 'chip-tag denda';
+    if (s.includes('bast')) return 'chip-tag bast';
+    return 'chip-tag proses';
+  };
+
+  const formatPaymentStatus = (status: string) => {
+    if (status === 'Perhitungan denda') return 'Denda';
+    return status;
   };
 
   const getRowBorderClass = (status: string) => {
-    switch (status) {
-      case 'Proses tagihan': return 'rb';
-      case 'Tertahan (dispute)': return 'ro';
-      case 'Denda': return 'rp';
-      case 'Menunggu BAST': return 'rg';
-      case 'Lunas': return 'rgr';
-      default: return 'rb';
-    }
+    const s = (status || '').toLowerCase();
+    if (s.includes('lunas') || s.includes('paid')) return 'rgr';
+    if (s.includes('tertahan') || s.includes('dispute')) return 'ro';
+    if (s.includes('denda')) return 'rp';
+    if (s.includes('bast')) return 'rg';
+    return 'rb';
   };
 
   // Handler to open Detail
@@ -676,7 +679,7 @@ export const PaymentTracking: React.FC<PaymentTrackingProps> = ({
                         </td>
                         <td>
                           <span className={getStatusChipClass(group.displayStatus)}>
-                            {group.displayStatus}
+                            {formatPaymentStatus(group.displayStatus)}
                           </span>
                         </td>
                         <td style={{ whiteSpace: 'nowrap' }}>
@@ -866,7 +869,7 @@ export const PaymentTracking: React.FC<PaymentTrackingProps> = ({
                         </td>
                         <td style={{ padding: '10px' }}>
                           <span className={getStatusChipClass(r.displayStatus)}>
-                            {r.displayStatus}
+                            {formatPaymentStatus(r.displayStatus)}
                           </span>
                         </td>
                       </tr>
@@ -1005,26 +1008,27 @@ export const PaymentTracking: React.FC<PaymentTrackingProps> = ({
                     <option value="Lunas">Lunas / Paid</option>
                     <option value="Menunggu BAST">Menunggu BAST</option>
                     <option value="Tertahan (dispute)">Tertahan (dispute)</option>
-                    <option value="Perhitungan denda">Perhitungan denda</option>
+                    <option value="Denda">Denda</option>
                   </select>
                 </label>
               </div>
 
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end', marginTop: '10px' }}>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'flex-end', marginTop: '14px' }}>
                 <button
                   type="button"
-                  className="bt"
+                  className="pay-form-btn-cancel"
                   onClick={() => setViewMode('list')}
                 >
-                  Batal
+                  <X size={15} />
+                  <span>Batal</span>
                 </button>
                 <button
                   type="button"
-                  className="bt ok"
+                  className="pay-form-btn-save"
                   onClick={() => handleSaveForm(false)}
-                  style={{ background: '#0B7A43', color: '#fff', borderColor: '#0B7A43' }}
                 >
-                  Simpan
+                  <Check size={16} strokeWidth={2.5} />
+                  <span>Simpan</span>
                 </button>
               </div>
             </div>

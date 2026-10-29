@@ -3649,13 +3649,9 @@ if (entryToDelete && !entryToDelete.id.startsWith('baseline-')) {
                         {d}
                       </span>
                     ))}
-                    <span className="t3-hm-end">Selesai</span>
                   </div>
                   {docFiltered.map((c, i) => {
                     const arr = Array.from(c.d);
-                    const aCount = arr.filter(x => x === 'A').length;
-                    const bCount = arr.filter(x => 'KHP'.includes(x)).length;
-                    const pct = aCount + bCount ? Math.round((aCount / (aCount + bCount)) * 100) : null;
 
                     return (
                       <div className="hrow" key={i}>
@@ -3670,20 +3666,6 @@ if (entryToDelete && !entryToDelete.id.startsWith('baseline-')) {
                             title={DN[j]}
                           />
                         ))}
-                        <b
-                          style={{
-                            color:
-                              pct === null
-                                ? 'var(--t3-mute)'
-                                : pct >= 75
-                                ? 'var(--t3-ok)'
-                                : pct < 50
-                                ? 'var(--t3-bad)'
-                                : 'var(--t3-ink)'
-                          }}
-                        >
-                          {pct !== null ? `${pct}%` : '-'}
-                        </b>
                       </div>
                     );
                   })}
