@@ -253,7 +253,7 @@ export const PeriodFilter: React.FC<PeriodFilterProps> = ({
                     onClick={() => handleWeekSelect(w)}
                   >
                     <div className="week-card-header">
-                      <span className="week-card-title">W - {w.weekNum}</span>
+                      <span className="week-card-title">W-{String(w.weekNum).padStart(2, '0')}</span>
                       {isSelected && <Check size={14} className="week-card-check" />}
                     </div>
                     <span className="week-card-dates">{w.shortLabel}</span>

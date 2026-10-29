@@ -1468,11 +1468,11 @@ tbody tr[aria-selected="true"] td {
   border-radius: 7px;
 }
 
-.c.ada { background: var(--ok); }
-.c.td { background: var(--na); }
-.c.kosong { background: var(--bad); }
-.c.proses { background: var(--warn); }
-.c.divisi { background: var(--accent-blue); }
+.c.ada { background: #2563eb; }
+.c.td { background: #94a3b8; }
+.c.kosong { background: #dc2626; }
+.c.proses { background: #ff8000; }
+.c.divisi { background: #facc15; }
 
 /* Timeline */
 .tl {
@@ -1868,18 +1868,18 @@ tbody tr[aria-selected="true"] td {
 /* Modal KPI Scorecard Grid - Clean 5-column layout on single row */
 .modal-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 20px;
 }
 
-@media (max-width: 960px) {
+@media (max-width: 720px) {
   .modal-kpi-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 560px) {
+@media (max-width: 480px) {
   .modal-kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1914,9 +1914,12 @@ tbody tr[aria-selected="true"] td {
   margin-bottom: 2px;
   text-align: center;
   width: 100%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  line-height: 1.25;
+  min-height: 2.5em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .modal-kpi-val {
@@ -4395,4 +4398,151 @@ tbody tr[aria-selected="true"] td {
 .period-action-link:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* ========================================== */
+/* PAYMENT TRACKING & GLOBAL DARK MODE STYLING */
+/* ========================================== */
+
+.btn-recall-data:hover,
+.btn-export-csv:hover,
+.btn-input-payment:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.1);
+}
+
+.btn-recall-data:active,
+.btn-export-csv:active,
+.btn-input-payment:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.payment-tracking-wrapper .card-proses { background: #EAF2FD; }
+.payment-tracking-wrapper .card-proses .k { color: #44546A; }
+.payment-tracking-wrapper .card-proses .m { color: #0F3F7A; }
+
+.payment-tracking-wrapper .card-lunas { background: #E6F8EF; }
+.payment-tracking-wrapper .card-lunas .k { color: #44546A; }
+.payment-tracking-wrapper .card-lunas .m { color: #07582F; }
+
+.payment-tracking-wrapper .card-bast { background: #EEF1F5; }
+.payment-tracking-wrapper .card-bast .k { color: #44546A; }
+.payment-tracking-wrapper .card-bast .m { color: #2E3A48; }
+
+.payment-tracking-wrapper .card-tertahan { background: #FFF1E3; }
+.payment-tracking-wrapper .card-tertahan .k { color: #44546A; }
+.payment-tracking-wrapper .card-tertahan .m { color: #7A3300; }
+
+[data-theme="dark"] .payment-tracking-wrapper {
+  background: linear-gradient(180deg, #070e17 0%, #0c1626 50%, #101c30 100%) !important;
+  color: #F8FAFC !important;
+}
+
+[data-theme="dark"] .payment-tracking-wrapper label,
+[data-theme="dark"] .payment-tracking-wrapper span {
+  color: #CBD5E1;
+}
+
+[data-theme="dark"] .payment-tracking-wrapper input,
+[data-theme="dark"] .payment-tracking-wrapper select {
+  background-color: #0f1b2e !important;
+  color: #f8fafc !important;
+  border-color: #1e293b !important;
+}
+
+[data-theme="dark"] .payment-tracking-wrapper select option {
+  background-color: #0f1b2e !important;
+  color: #f8fafc !important;
+}
+
+[data-theme="dark"] .payment-tracking-wrapper .pay-btn-action {
+  background: #1e293b !important;
+  color: #f8fafc !important;
+  border-color: #334155 !important;
+}
+
+[data-theme="dark"] .payment-tracking-wrapper .card {
+  background-color: #0d1829 !important;
+  border-color: #1e293b !important;
+  color: #f8fafc !important;
+}
+
+[data-theme="dark"] .payment-tracking-wrapper .card-proses {
+  background: #0f2442 !important;
+}
+[data-theme="dark"] .payment-tracking-wrapper .card-proses .k {
+  color: #93c5fd !important;
+}
+[data-theme="dark"] .payment-tracking-wrapper .card-proses .m {
+  color: #dbeafe !important;
+}
+
+[data-theme="dark"] .payment-tracking-wrapper .card-lunas {
+  background: #063821 !important;
+}
+[data-theme="dark"] .payment-tracking-wrapper .card-lunas .k {
+  color: #6ee7b7 !important;
+}
+[data-theme="dark"] .payment-tracking-wrapper .card-lunas .m {
+  color: #d1fae5 !important;
+}
+
+[data-theme="dark"] .payment-tracking-wrapper .card-bast {
+  background: #172436 !important;
+}
+[data-theme="dark"] .payment-tracking-wrapper .card-bast .k {
+  color: #cbd5e1 !important;
+}
+[data-theme="dark"] .payment-tracking-wrapper .card-bast .m {
+  color: #f1f5f9 !important;
+}
+
+[data-theme="dark"] .payment-tracking-wrapper .card-tertahan {
+  background: #3b1c04 !important;
+}
+[data-theme="dark"] .payment-tracking-wrapper .card-tertahan .k {
+  color: #fdba74 !important;
+}
+[data-theme="dark"] .payment-tracking-wrapper .card-tertahan .m {
+  color: #ffedd5 !important;
+}
+
+[data-theme="dark"] .payment-tracking-wrapper table th {
+  background-color: #0f1b2e !important;
+  color: #94a3b8 !important;
+  border-bottom: 1px solid #1e293b !important;
+}
+
+[data-theme="dark"] .payment-tracking-wrapper table td {
+  background-color: #0d1829 !important;
+  color: #f8fafc !important;
+  border-bottom: 1px solid #1e293b !important;
+}
+
+[data-theme="dark"] .payment-tracking-wrapper tbody tr:hover td {
+  background-color: #16243a !important;
+}
+
+[data-theme="dark"] .modal-kpi-card {
+  background-color: #0f1b2e !important;
+  border-color: #1e293b !important;
+  color: #f8fafc !important;
+}
+
+[data-theme="dark"] .modal-kpi-label {
+  color: #94a3b8 !important;
+}
+
+[data-theme="dark"] .modal-kpi-sub {
+  color: #64748b !important;
+}
+
+.pay-btn-detail:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4) !important;
+  filter: brightness(1.1);
+}
+
+.pay-btn-detail:active {
+  transform: translateY(0);
 }

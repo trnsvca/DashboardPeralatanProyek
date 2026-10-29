@@ -59,6 +59,14 @@ import { PaymentTracking } from './components/PaymentTracking';
 import { PeriodFilter } from './components/PeriodFilter';
   import { normalizeStatus } from './utils/helpers';
    const isOngoingGroup = (g?: string) => (g ?? '').replace(/\s+/g, '').toUpperCase() === 'ONGOING';
+   const groupKey = (g?: string) => {
+  const u = (g ?? '').toUpperCase().replace(/\s+/g, ' ').trim();
+  if (u.replace(/\s+/g, '') === 'ONGOING') return 'ON GOING';
+  if (u.startsWith('SUDAH SELESAI FISIK') || u === 'SELESAI') return 'SELESAI';
+  if (u.startsWith('SUDAH RELEASE PO') || u === 'PO') return 'PO';
+  if (u.includes('AANWIJZING') || u.includes('LELANG')) return 'LELANG';
+  return u;
+};
 
 // Status Update Record and History Types
 export interface ProjectStatusUpdate {
@@ -1890,7 +1898,7 @@ export default function App() {
         ...m,
         ...idEdit,
         wbs: rawWbs,
-        st: rawSt,
+        st: normalizeStatus(rawSt),
         s: normalizeStatus(rawSt),
         sit: up?.sit ?? idEdit.sit ?? '',
         mit: up?.mit ?? idEdit.mit ?? '',
@@ -1916,7 +1924,7 @@ export default function App() {
         d = temp;
       }
       if (m >= 1 && m <= 12) {
-        const dayStr = d < 10 ? `0${d}` : `${d}`;
+        const dayStr = String(d);
         return `${dayStr} ${months[m - 1]} ${y}`;
       }
     }
@@ -2150,7 +2158,7 @@ export default function App() {
   // Tab 2 Filtered List (Respects Date Range)
   const detailList = useMemo(() => {
     return projects.map((m, i) => ({ m, i })).filter(({ m }) => {
-      const matchKelompok = !gs || m.g === gs;
+      const matchKelompok = !gs || groupKey(m.g) === gs;
       const matchStatus =
         !ss ||
         (ss === 'Ongoing' && m.st === 'Ongoing') ||
@@ -2930,60 +2938,19 @@ if (entryToDelete && !entryToDelete.id.startsWith('baseline-')) {
 
             {/* Filter spesifik tab Kurva S (Tab 4) */}
             {activeTab === 't4' && (
-              <>
-                <select
-                  id="ksel"
-                  aria-label="Tampilkan proyek"
-                  value={kSel}
-                  onChange={e => setKSel(e.target.value)}
-                >
-                  <option value="p">Seluruh Proyek</option>
-                  {K.names.map((n, i) => (
-                    <option key={i} value={String(i)}>
-                      {n}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  id="kcutoff-sel"
-                  aria-label="Posisi Cutoff Kurva S"
-                  value={
-                    endInput
-                      ? endInput.slice(0, 7)
-                      : startInput
-                      ? startInput.slice(0, 7)
-                      : ''
-                  }
-                  onChange={e => {
-                    const ym = e.target.value;
-                    if (!ym) {
-                      setEndInput('');
-                    } else {
-                      const [yStr, mStr] = ym.split('-');
-                      const y = Number(yStr);
-                      const m = Number(mStr);
-                      const lastDay = new Date(y, m, 0).getDate();
-                      const dStr = String(lastDay).padStart(2, '0');
-                      setEndInput(`${yStr}-${mStr}-${dStr}`);
-                    }
-                  }}
-                  title="Pilih posisi bulan cut-off Kurva S"
-                >
-                  <option value="">Cutoff: Default (Agustus 2026)</option>
-                  <option value="2026-06">Cutoff: Juni 2026</option>
-                  <option value="2026-07">Cutoff: Juli 2026</option>
-                  <option value="2026-09">Cutoff: September 2026</option>
-                  <option value="2026-05">Cutoff: Mei 2026</option>
-                  <option value="2026-04">Cutoff: April 2026</option>
-                  <option value="2026-03">Cutoff: Maret 2026</option>
-                  <option value="2026-02">Cutoff: Februari 2026</option>
-                  <option value="2026-01">Cutoff: Januari 2026</option>
-                  <option value="2025-12">Cutoff: Desember 2025</option>
-                  <option value="2025-06">Cutoff: Juni 2025</option>
-                  <option value="2024-12">Cutoff: Desember 2024</option>
-                </select>
-              </>
+              <select
+                id="ksel"
+                aria-label="Tampilkan proyek"
+                value={kSel}
+                onChange={e => setKSel(e.target.value)}
+              >
+                <option value="p">Seluruh Proyek</option>
+                {K.names.map((n, i) => (
+                  <option key={i} value={String(i)}>
+                    {n}
+                  </option>
+                ))}
+              </select>
             )}
 
             {/* Filter spesifik tab Document Tracking (Tab 3) */}
@@ -3115,7 +3082,7 @@ if (entryToDelete && !entryToDelete.id.startsWith('baseline-')) {
                         data={GK.map(([k, l, c]) => ({
                           key: k,
                           label: l,
-                          value: detailList.filter(d => d.m.g === k).length,
+                          value: detailList.filter(d => groupKey(d.m.g) === k).length,
                           color: c
                         }))}
                       />
@@ -3489,7 +3456,7 @@ if (entryToDelete && !entryToDelete.id.startsWith('baseline-')) {
                         detailList.map(({ m, i }) => {
                           const c = stc(m.st);
                           const badge = getOwnerBadge(m.pem);
-                          const gInfo = GK.find(g => g[0] === m.g) || ['Ongoing', m.g, '#10b981'];
+                          const gInfo = GK.find(g => g[0] === groupKey(m.g)) || ['Ongoing', m.g, '#10b981'];
                           const dv = m.dv;
                           const dvElem = dv == null ? (
                             <span className="dv nil">–</span>
@@ -3616,8 +3583,6 @@ if (entryToDelete && !entryToDelete.id.startsWith('baseline-')) {
                         {/* ===== KPI (gaya kartu seperti tab Kurva S) ===== */}
               <div className="t3-kpis" id="dk">
                 {(() => {
-                  const scope = dsS === 'G' ? 'Ongoing' : dsS === 'C' ? 'Closed' : 'Semua';
-                  const jenis = dsJ === 'U' ? 'User' : dsJ === 'V' ? 'Vendor' : 'User + Vendor';
                   const pctUnder = docStats.total ? Math.round((docStats.under100 / docStats.total) * 100) : 0;
                   const totalCells = docFiltered.length * 20;
                   const pctMissing = totalCells ? Math.min(100, Math.round((docStats.missing / totalCells) * 100)) : 0;
@@ -3627,42 +3592,32 @@ if (entryToDelete && !entryToDelete.id.startsWith('baseline-')) {
                       <div className="kinfo-card" style={{ borderTop: '3px solid #3b82f6' }}>
                         <div className="kinfo-head">
                           <span className="kinfo-title">Total Kontrak</span>
-                          <span className="kinfo-pill">{scope}</span>
                         </div>
                         <div className="kinfo-val">{docStats.total}</div>
-                        <div className="kinfo-desc">{jenis}</div>
                         <div className="kk-bar" style={{ marginTop: 'auto' }}><i style={{ width: '100%', background: '#3b82f6' }} /></div>
                       </div>
 
                       <div className="kinfo-card" style={{ borderTop: '3px solid #10b981' }}>
                         <div className="kinfo-head">
                           <span className="kinfo-title">Rata-Rata Kelengkapan</span>
-                          <span className="kinfo-pill">{scope}</span>
                         </div>
                         <div className="kinfo-val">{docStats.completeness}%</div>
-                        <div className="kinfo-desc">Dari Seluruh Kontrak</div>
                         <div className="kk-bar" style={{ marginTop: 'auto' }}><i style={{ width: `${docStats.completeness}%`, background: '#10b981' }} /></div>
                       </div>
 
-                      <div className="kinfo-card" style={{ borderTop: '3px solid #ef4444' }}>
+                      <div className="kinfo-card" style={{ borderTop: '3px solid #dc2626' }}>
                         <div className="kinfo-head">
                           <span className="kinfo-title">Belum Ada / Hilang</span>
-                          <span className="kinfo-pill">{scope}</span>
                         </div>
-                        <div className="kinfo-val" style={{ color: docStats.missing > 0 ? '#ef4444' : undefined }}>{docStats.missing}</div>
-                        <div className="kinfo-desc" style={{ color: docStats.missing > 0 ? '#ef4444' : undefined, fontWeight: 600 }}>
-                          {docStats.missing > 0 ? 'Dokumen Perlu Ditindaklanjuti' : 'Semua Dokumen Lengkap'}
-                        </div>
-                        <div className="kk-bar" style={{ marginTop: 'auto' }}><i style={{ width: `${pctMissing}%`, background: '#ef4444' }} /></div>
+                        <div className="kinfo-val" style={{ color: docStats.missing > 0 ? '#dc2626' : undefined }}>{docStats.missing}</div>
+                        <div className="kk-bar" style={{ marginTop: 'auto' }}><i style={{ width: `${pctMissing}%`, background: '#dc2626' }} /></div>
                       </div>
 
                       <div className="kinfo-card" style={{ borderTop: '3px solid #f59e0b' }}>
                         <div className="kinfo-head">
                           <span className="kinfo-title">Kontrak Progres &lt; 100%</span>
-                          <span className="kinfo-pill">{scope}</span>
                         </div>
                         <div className="kinfo-val">{docStats.under100}</div>
-                        <div className="kinfo-desc">Dari {docStats.total} Kontrak</div>
                         <div className="kk-bar" style={{ marginTop: 'auto' }}><i style={{ width: `${pctUnder}%`, background: '#f59e0b' }} /></div>
                       </div>
                     </>
@@ -3678,11 +3633,11 @@ if (entryToDelete && !entryToDelete.id.startsWith('baseline-')) {
                     <div className="t3-sub">Kontrak × 20 Dokumen</div>
                   </div>
                   <div className="t3-legend">
-                    <span><i style={{ background: 'var(--ok)' }} />Ada</span>
-                    <span><i style={{ background: '#BFC6C4' }} />Tidak Diperlukan</span>
-                    <span><i style={{ background: 'var(--bad)' }} />Belum Ada / Hilang</span>
-                    <span><i style={{ background: 'var(--risk)' }} />Proses / Pekerjaan Berjalan</span>
-                    <span><i style={{ background: 'var(--accent-blue)' }} />Divisi Lain</span>
+                    <span><i style={{ background: '#2563eb' }} />Ada</span>
+                    <span><i style={{ background: '#94a3b8' }} />Tidak Diperlukan</span>
+                    <span><i style={{ background: '#dc2626' }} />Belum Ada / Hilang</span>
+                    <span><i style={{ background: '#ff8000' }} />Proses / Pekerjaan Berjalan</span>
+                    <span><i style={{ background: '#facc15' }} />Divisi Lain</span>
                   </div>
                 </div>
 
@@ -3960,7 +3915,9 @@ if (entryToDelete && !entryToDelete.id.startsWith('baseline-')) {
                           color: stText(projects[selectedIdx].st),
                           fontSize: '12px',
                           padding: '4px 10px',
-                          display: 'inline-block'
+                          display: 'inline-block',
+                          whiteSpace: 'normal',
+                          wordBreak: 'break-word'
                         }}
                       >
                         {projects[selectedIdx].st}
@@ -3979,63 +3936,6 @@ if (entryToDelete && !entryToDelete.id.startsWith('baseline-')) {
                     })()}
                   </div>
 
-                  <div
-                    className="modal-kpi-card"
-                    style={{
-                      borderColor:
-                        ! (projects[selectedIdx].st === 'Finished') &&
-                        sisa(projects[selectedIdx].akd) !== null && sisa(projects[selectedIdx].akd)! < 0
-                          ? '#f87171'
-                          : undefined,
-                      background:
-                        ! (projects[selectedIdx].st === 'Finished') &&
-                        sisa(projects[selectedIdx].akd) !== null && sisa(projects[selectedIdx].akd)! < 0
-                          ? 'rgba(239, 68, 68, 0.05)'
-                          : undefined
-                    }}
-                  >
-                    <span className="modal-kpi-label">Akhir Kontrak Terkini</span>
-                    <b
-                      className="modal-kpi-val"
-                      style={{
-                        fontSize: '13px',
-                        color:
-                          ! (projects[selectedIdx].st === 'Finished') &&
-                          sisa(projects[selectedIdx].akd) !== null && sisa(projects[selectedIdx].akd)! < 0
-                            ? '#ef4444'
-                            : 'inherit'
-                      }}
-                    >
-                      {projects[selectedIdx].akt}
-                    </b>
-                    <span className="modal-kpi-sub">
-                      {(() => {
-                        const rawD = sisa(projects[selectedIdx].akd);
-                        const isDone = projects[selectedIdx].st === 'Finished';
-                        const d = isDone && rawD !== null && rawD < 0 ? 0 : rawD;
-                        if (d === null) return '-';
-                        if (d < 0) {
-                          return (
-                            <span style={{ color: '#ef4444', fontWeight: 800 }}>
-                              ⚠️ Terlambat {-d} hari
-                            </span>
-                          );
-                        }
-                        if (d <= 30) {
-                          return (
-                            <span style={{ color: '#f59e0b', fontWeight: 700 }}>
-                              Sisa {d} hari
-                            </span>
-                          );
-                        }
-                        return (
-                          <span style={{ color: '#10b981', fontWeight: 600 }}>
-                            Sisa {d} hari
-                          </span>
-                        );
-                      })()}
-                    </span>
-                  </div>
                 </div>
 
                 <div className="g2x">
@@ -4108,11 +4008,11 @@ if (entryToDelete && !entryToDelete.id.startsWith('baseline-')) {
                       </div>
                       <div className="kv">
                         <b>BAMK</b>
-                        <span>{projects[selectedIdx].bamk}</span>
+                        <span>{formatIndoDate(projects[selectedIdx].bamk)}</span>
                       </div>
                       <div className="kv">
                         <b>Akhir kontrak (awal)</b>
-                        <span>{projects[selectedIdx].ak}</span>
+                        <span>{formatIndoDate(projects[selectedIdx].ak)}</span>
                       </div>
                       <div className="kv">
                         <b>Akhir kontrak terkini</b>
@@ -4217,7 +4117,7 @@ if (entryToDelete && !entryToDelete.id.startsWith('baseline-')) {
                             if (statusViewMode === 'edit') {
                               setStatusViewMode('view');
                             } else {
-                              setEditSt(projects[selectedIdx].st);
+                              setEditSt(normalizeStatus(projects[selectedIdx].st));
                               setEditSit(projects[selectedIdx].sit);
                               setEditMit(projects[selectedIdx].mit);
                               setEditNote('');
@@ -4250,49 +4150,31 @@ if (entryToDelete && !entryToDelete.id.startsWith('baseline-')) {
                     <div id="psu">
                       {statusViewMode === 'edit' ? (
                         <form className="status-edit-form" onSubmit={handleSaveStatusUpdate}>
-                          <div
-                            style={{
-                              background: 'rgba(37, 99, 235, 0.05)',
-                              border: '1px solid rgba(37, 99, 235, 0.15)',
-                              borderRadius: '8px',
-                              padding: '8px 12px',
-                              fontSize: '11px',
-                              color: 'var(--ink)',
-                              marginBottom: '10px'
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                              <span style={{ fontWeight: 700, color: 'var(--accent)' }}>
-                                📊 Target: Sheet 'Detail Project Catatan'
-                              </span>
-                              {googleUser ? (
-                                <span style={{ color: '#059669', fontWeight: 600, fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
-                                  Terhubung: {googleUser.displayName || googleUser.email}
-                                </span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={handleGoogleSignIn}
-                                  style={{
-                                    background: '#2563eb',
-                                    color: '#ffffff',
-                                    border: 'none',
-                                    padding: '3px 8px',
-                                    borderRadius: '5px',
-                                    fontSize: '10px',
-                                    fontWeight: 700,
-                                    cursor: 'pointer'
-                                  }}
-                                >
-                                  Hubungkan Google
-                                </button>
-                              )}
-                            </div>
-                            <span style={{ color: 'var(--mute)', fontSize: '10.5px' }}>
-                              Hasil input akan otomatis mengisi <b>WBS</b> (Kolom A), <b>Tanggal</b> (Kolom C), <b>Status</b> (Kolom I), <b>Problem</b> (Kolom J), <b>Action Plan</b> (Kolom K), dan <b>Catatan</b> (Kolom L).
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: '10px' }}>
+                          {googleUser ? (
+                            <span style={{ color: '#059669', fontWeight: 600, fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
+                              Terhubung: {googleUser.displayName || googleUser.email}
                             </span>
-                          </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={handleGoogleSignIn}
+                              style={{
+                                background: '#2563eb',
+                                color: '#ffffff',
+                                border: 'none',
+                                padding: '3px 8px',
+                                borderRadius: '5px',
+                                fontSize: '10px',
+                                fontWeight: 700,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              Hubungkan Google
+                            </button>
+                          )}
+                        </div>
 
                           <div className="status-form-group">
                             <label>Status Proyek</label>
@@ -4301,11 +4183,11 @@ if (entryToDelete && !entryToDelete.id.startsWith('baseline-')) {
                               onChange={e => setEditSt(e.target.value)}
                               required
                             >
-                              {Object.keys(SC).map(s => (
-                                <option key={s} value={s}>
-                                  {s}
-                                </option>
-                              ))}
+                              <option value="Ongoing">Ongoing</option>
+                              <option value="Delayed">Delayed</option>
+                              <option value="At risk">At risk</option>
+                              <option value="Finished">Finished</option>
+                              <option value="Closed">Closed</option>
                             </select>
                           </div>
 

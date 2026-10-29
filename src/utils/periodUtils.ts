@@ -20,70 +20,54 @@ export interface PeriodWeek {
   label: string;        // e.g. "W-5 (26 Jan - 1 Feb 2026)"
 }
 
-// Generate continuous Monday-to-Sunday weeks grouped by the month of Monday, restarting weekNum to 1 every year
-export function generateAllWeeks(startYear = 2023, endYear = 2027): Record<string, PeriodWeek[]> {
+// Penomoran minggu mengikuti sheet 'Kode Mingguan':
+// Senin-Minggu, W01 = 1 Jan s/d Minggu pertama (bisa parsial),
+// minggu yang melewati pergantian tahun dipecah, nomor reset tiap tahun.
+export function generateAllWeeks(startYear = 2023, endYear = 2030): Record<string, PeriodWeek[]> {
   const weeksByMonth: Record<string, PeriodWeek[]> = {};
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-  let curr = new Date(startYear, 0, 1);
-  const day = curr.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
-  const diffToMonday = day === 0 ? -6 : 1 - day;
-  curr.setDate(curr.getDate() + diffToMonday);
+  for (let y = startYear; y <= endYear; y++) {
+    const lastDay = new Date(y, 11, 31);
+    let start = new Date(y, 0, 1);
+    let weekNum = 1;
 
-  let currentYear = curr.getFullYear();
-  let weekNum = 1;
-  const endDateLimit = new Date(endYear, 11, 31);
+    while (start <= lastDay) {
+      const toSunday = (7 - start.getDay()) % 7;
+      let end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + toSunday);
+      if (end > lastDay) end = lastDay;
 
-  while (curr <= endDateLimit) {
-    const monday = new Date(curr);
-    const sunday = new Date(curr);
-    sunday.setDate(monday.getDate() + 6);
+      const m = start.getMonth();
+      const monthKey = `${y}-${pad(m + 1)}`;
+      const sameMonth = start.getMonth() === end.getMonth();
+      const startName = MONTH_SHORT_ID[start.getMonth()];
+      const endName = MONTH_SHORT_ID[end.getMonth()];
+      const shortLabel =
+        start.getDate() === end.getDate() && sameMonth
+          ? `(${start.getDate()} ${startName})`
+          : sameMonth
+          ? `(${start.getDate()} - ${end.getDate()} ${startName})`
+          : `(${start.getDate()} ${startName} - ${end.getDate()} ${endName})`;
 
-    const y = monday.getFullYear();
-    const m = monday.getMonth(); // 0-11
+      if (!weeksByMonth[monthKey]) weeksByMonth[monthKey] = [];
+      weeksByMonth[monthKey].push({
+        weekNum,
+        year: y,
+        monthIdx: m,
+        startDay: start.getDate(),
+        endDay: end.getDate(),
+        startDateStr: ymd(start),
+        endDateStr: ymd(end),
+        shortLabel,
+        label: `W-${pad(weekNum)} ${shortLabel} ${y}`
+      });
 
-    if (y !== currentYear) {
-      currentYear = y;
-      weekNum = 1;
+      weekNum++;
+      start = new Date(end.getFullYear(), end.getMonth(), end.getDate() + 1);
     }
-
-    const monthKey = `${y}-${String(m + 1).padStart(2, '0')}`;
-
-    if (!weeksByMonth[monthKey]) {
-      weeksByMonth[monthKey] = [];
-    }
-
-    const startDay = monday.getDate();
-    const endDay = sunday.getDate();
-    const startMonthName = MONTH_SHORT_ID[monday.getMonth()];
-    const endMonthName = MONTH_SHORT_ID[sunday.getMonth()];
-
-    const startDateStr = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
-    const endDateStr = `${sunday.getFullYear()}-${String(sunday.getMonth() + 1).padStart(2, '0')}-${String(sunday.getDate()).padStart(2, '0')}`;
-
-    const sameMonth = monday.getMonth() === sunday.getMonth();
-    const shortLabel = sameMonth
-      ? `(${startDay} - ${endDay} ${startMonthName})`
-      : `(${startDay} ${startMonthName} - ${endDay} ${endMonthName})`;
-    
-    const label = `W-${weekNum} ${shortLabel} ${y}`;
-
-    weeksByMonth[monthKey].push({
-      weekNum,
-      year: y,
-      monthIdx: m,
-      startDay,
-      endDay,
-      startDateStr,
-      endDateStr,
-      shortLabel,
-      label
-    });
-
-    weekNum++;
-    curr.setDate(curr.getDate() + 7);
   }
-
   return weeksByMonth;
 }
 
-export const ALL_WEEKS_BY_MONTH = generateAllWeeks(2023, 2027);
+export const ALL_WEEKS_BY_MONTH = generateAllWeeks(2023, 2030);
